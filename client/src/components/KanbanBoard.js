@@ -20,7 +20,7 @@ const KanbanBoard = ({ tasks, onTaskClick, onTaskDrop }) => {
 
   const handleDrop = (status) => {
     if (draggedTask && draggedTask.status !== status) {
-      onTaskDrop(draggedTask._id, status);
+      onTaskDrop(draggedTask.id || draggedTask._id, status);
     }
     setDraggedTask(null);
   };
@@ -47,7 +47,7 @@ const KanbanBoard = ({ tasks, onTaskClick, onTaskDrop }) => {
             <div style={{ minHeight: '400px' }}>
               {columnTasks.map(task => (
                 <TaskCard
-                  key={task._id}
+                  key={task.id || task._id}
                   task={task}
                   onDragStart={() => handleDragStart(task)}
                   onClick={() => onTaskClick(task)}

@@ -111,15 +111,38 @@ const Settings = () => {
   };
 
   return (
-    <div style={{ maxWidth: '900px', margin: '0 auto' }}>
+    <div style={{ maxWidth: '1000px', margin: '0 auto' }}>
       <h1 style={{ 
         fontSize: '32px', 
         fontWeight: 'bold', 
-        marginBottom: '40px',
+        marginBottom: '24px',
         color: '#1a1a1a'
       }}>
         My Settings
       </h1>
+
+      {/* Tabs */}
+      <div style={{
+        display: 'flex',
+        gap: '8px',
+        borderBottom: '2px solid #e0e0e0',
+        marginBottom: '32px'
+      }}>
+        <button
+          style={{
+            padding: '12px 24px',
+            background: 'none',
+            border: 'none',
+            borderBottom: '3px solid #6b5ce6',
+            color: '#6b5ce6',
+            cursor: 'pointer',
+            fontWeight: '600',
+            fontSize: '14px'
+          }}
+        >
+          Profile
+        </button>
+      </div>
 
       <div style={{ 
         display: 'grid', 
@@ -192,21 +215,28 @@ const Settings = () => {
               }}>
                 {!avatarPreview && getInitials(profileData.fullName)}
               </div>
-              <label style={{
-                position: 'absolute',
-                bottom: 0,
-                right: 0,
-                background: '#6b5ce6',
-                color: 'white',
-                borderRadius: '50%',
-                width: '28px',
-                height: '28px',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                cursor: 'pointer',
-                fontSize: '14px'
-              }}>
+              <label
+                style={{
+                  position: 'absolute',
+                  bottom: 0,
+                  right: 0,
+                  background: '#6b5ce6',
+                  color: 'white',
+                  borderRadius: '50%',
+                  width: '32px',
+                  height: '32px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  cursor: 'pointer',
+                  fontSize: '16px',
+                  boxShadow: '0 2px 8px rgba(0,0,0,0.2)',
+                  transition: 'all 0.2s'
+                }}
+                onMouseEnter={(e) => e.currentTarget.style.background = '#5a4cd6'}
+                onMouseLeave={(e) => e.currentTarget.style.background = '#6b5ce6'}
+                title="Change avatar"
+              >
                 📷
                 <input
                   type="file"

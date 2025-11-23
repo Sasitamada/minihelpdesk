@@ -1,8 +1,17 @@
 import React, { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import { projectsAPI, tasksAPI } from '../services/api';
+import ViewSwitcher from '../components/ViewSwitcher';
 import KanbanBoard from '../components/KanbanBoard';
-import TaskModal from '../components/TaskModal';
+import ListView from '../components/views/ListView';
+import CalendarView from '../components/views/CalendarView';
+import GanttView from '../components/views/GanttView';
+import TableView from '../components/views/TableView';
+import ChatView from '../components/views/ChatView';
+import TimelineView from '../components/views/TimelineView';
+import EnhancedTaskModal from '../components/EnhancedTaskModal';
+import ShareModal from '../components/ShareModal';
+import useSocket from '../hooks/useSocket';
 
 const ProjectView = () => {
   const { projectId } = useParams();
@@ -19,6 +28,9 @@ const ProjectView = () => {
     assignedTo: '',
     tag: ''
   });
+  const [currentView, setCurrentView] = useState('board');
+  const [showShareModal, setShowShareModal] = useState(false);
+  const { socket } = useSocket();
 
   useEffect(() => {
     loadProject();
@@ -28,6 +40,25 @@ const ProjectView = () => {
   useEffect(() => {
     applyFilters();
   }, [tasks, filters]);
+
+  // Real-time task updates via WebSocket
+  useEffect(() => {
+    if (!socket || !projectId) return;
+
+    const handleTaskUpdate = (data) => {
+      // Reload tasks when updated
+      loadTasks();
+    };
+
+    socket.on('task-updated', handleTaskUpdate);
+    
+    // Join project room for real-time updates
+    socket.emit('join-workspace', project?.workspace_id);
+
+    return () => {
+      socket.off('task-updated', handleTaskUpdate);
+    };
+  }, [socket, projectId, project]);
 
   const loadProject = async () => {
     try {
@@ -171,9 +202,23 @@ const ProjectView = () => {
           </h1>
           <p style={{ color: '#6c757d' }}>{project.description || 'No description'}</p>
         </div>
-        <button className="btn btn-primary" onClick={() => setShowCreateModal(true)}>
-          + New Task
-        </button>
+        <div style={{ display: 'flex', gap: '12px' }}>
+          <button
+            className="btn btn-secondary"
+            onClick={() => setShowShareModal(true)}
+            style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
+          >
+            🔗 Share Project
+          </button>
+          <button className="btn btn-primary" onClick={() => setShowCreateModal(true)}>
+            + New Task
+          </button>
+        </div>
+      </div>
+
+      {/* View Switcher */}
+      <div style={{ marginBottom: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <ViewSwitcher currentView={currentView} onViewChange={setCurrentView} />
       </div>
 
       <div style={{ 
@@ -243,14 +288,61 @@ const ProjectView = () => {
         </div>
       </div>
 
-      <KanbanBoard 
-        tasks={filteredTasks}
-        onTaskClick={(task) => setSelectedTask(task)}
-        onTaskDrop={handleTaskDrop}
-      />
+      {/* Render Current View */}
+      {currentView === 'list' && (
+        <ListView
+          tasks={filteredTasks}
+          onTaskClick={(task) => setSelectedTask(task)}
+          onTaskUpdate={handleUpdateTask}
+        />
+      )}
+
+      {currentView === 'board' && (
+        <KanbanBoard 
+          tasks={filteredTasks}
+          onTaskClick={(task) => setSelectedTask(task)}
+          onTaskDrop={handleTaskDrop}
+        />
+      )}
+
+      {currentView === 'calendar' && (
+        <CalendarView
+          tasks={filteredTasks}
+          onTaskClick={(task) => setSelectedTask(task)}
+        />
+      )}
+
+      {currentView === 'gantt' && (
+        <GanttView
+          tasks={filteredTasks}
+          onTaskClick={(task) => setSelectedTask(task)}
+        />
+      )}
+
+      {currentView === 'table' && (
+        <TableView
+          tasks={filteredTasks}
+          onTaskClick={(task) => setSelectedTask(task)}
+          onTaskUpdate={handleUpdateTask}
+        />
+      )}
+
+      {currentView === 'chat' && (
+        <ChatView
+          tasks={filteredTasks}
+          onTaskClick={(task) => setSelectedTask(task)}
+        />
+      )}
+
+      {currentView === 'timeline' && (
+        <TimelineView
+          tasks={filteredTasks}
+          onTaskClick={(task) => setSelectedTask(task)}
+        />
+      )}
 
       {showCreateModal && (
-        <TaskModal
+        <EnhancedTaskModal
           onClose={() => setShowCreateModal(false)}
           onSave={handleCreateTask}
           project={project}
@@ -258,7 +350,7 @@ const ProjectView = () => {
       )}
 
       {selectedTask && (
-        <TaskModal
+        <EnhancedTaskModal
           task={selectedTask}
           onClose={() => setSelectedTask(null)}
           onSave={(updates) => handleUpdateTask(selectedTask.id || selectedTask._id, updates)}
@@ -267,6 +359,15 @@ const ProjectView = () => {
             setSelectedTask(null);
           }}
           project={project}
+        />
+      )}
+
+      {/* Share Modal */}
+      {showShareModal && project && (
+        <ShareModal
+          resourceType="project"
+          resourceId={project.id}
+          onClose={() => setShowShareModal(false)}
         />
       )}
     </div>

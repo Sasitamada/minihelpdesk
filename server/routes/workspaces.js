@@ -1,12 +1,16 @@
 const express = require('express');
 const router = express.Router();
+const { checkWorkspacePermission, requireAdmin, canCreateWorkspace } = require('../middleware/permissions');
 
 // Get all workspaces
 router.get('/', async (req, res) => {
   try {
+    console.log('Fetching all workspaces');
     const { rows } = await req.app.locals.pool.query('SELECT * FROM workspaces ORDER BY created_at DESC');
+    console.log(`Found ${rows.length} workspaces`);
     res.json(rows);
   } catch (error) {
+    console.error('Error fetching workspaces:', error);
     res.status(500).json({ message: error.message });
   }
 });
@@ -107,17 +111,33 @@ router.put('/:id/members/:userId', async (req, res) => {
   }
 });
 
-// Create workspace
+// Create workspace (only admins can create)
 router.post('/', async (req, res) => {
   try {
+    console.log('Creating workspace with data:', req.body);
     const { name, description, color, owner } = req.body;
+    
+    // Check if user can create workspace (basic check - in production use JWT)
+    // For now, allow if owner is provided
+    if (!owner) {
+      return res.status(403).json({ message: 'Only workspace owners can create workspaces' });
+    }
+    
+    // Validate required fields
+    if (!name || !name.trim()) {
+      return res.status(400).json({ message: 'Workspace name is required' });
+    }
+    
     const { rows } = await req.app.locals.pool.query(
       'INSERT INTO workspaces (name, description, color, owner) VALUES ($1, $2, $3, $4) RETURNING *',
-      [name, description, color || '#7b68ee', owner]
+      [name.trim(), description?.trim() || null, color || '#7b68ee', owner || null]
     );
+    
+    console.log('Workspace created successfully:', rows[0]);
     res.status(201).json(rows[0]);
   } catch (error) {
-    res.status(400).json({ message: error.message });
+    console.error('Error creating workspace:', error);
+    res.status(400).json({ message: error.message || 'Failed to create workspace' });
   }
 });
 

@@ -60,9 +60,36 @@ function requireMember(req, res, next) {
   next();
 }
 
+function requireGuestOrAbove(req, res, next) {
+  // Admin, member, and guest can proceed
+  if (!req.userRole || (req.userRole !== 'admin' && req.userRole !== 'member' && req.userRole !== 'guest')) {
+    return res.status(403).json({ message: 'Access denied' });
+  }
+  next();
+}
+
+// Check if user can edit tasks
+function canEditTask(req, res, next) {
+  if (req.userRole === 'admin' || req.userRole === 'member') {
+    return next();
+  }
+  return res.status(403).json({ message: 'You do not have permission to edit tasks' });
+}
+
+// Check if user can create workspaces
+function canCreateWorkspace(req, res, next) {
+  if (req.userRole === 'admin') {
+    return next();
+  }
+  return res.status(403).json({ message: 'Only admins can create workspaces' });
+}
+
 module.exports = {
   checkWorkspacePermission,
   requireAdmin,
-  requireMember
+  requireMember,
+  requireGuestOrAbove,
+  canEditTask,
+  canCreateWorkspace
 };
 

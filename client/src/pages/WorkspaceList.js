@@ -23,11 +23,17 @@ const WorkspaceList = () => {
 
   const handleCreateWorkspace = async (data) => {
     try {
-      await workspacesAPI.create(data);
+      console.log('Creating workspace with data:', data);
+      const response = await workspacesAPI.create(data);
+      console.log('Workspace created successfully:', response.data);
       setShowCreateModal(false);
       loadWorkspaces();
+      // Show success message
+      alert('Workspace created successfully!');
     } catch (error) {
       console.error('Error creating workspace:', error);
+      const errorMessage = error.response?.data?.message || error.message || 'Failed to create workspace';
+      alert(`Error: ${errorMessage}`);
     }
   };
 

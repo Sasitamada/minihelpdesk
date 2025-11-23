@@ -2,7 +2,7 @@
 
 ## Prerequisites
 ✅ Node.js installed
-✅ NeonDB PostgreSQL database (already configured)
+✅ Render.com PostgreSQL database (already configured)
 
 ---
 
@@ -12,7 +12,7 @@
 
 ```env
 PORT=5000
-DATABASE_URL=postgresql://neondb_owner:npg_bnDM2fCkcxQ5@ep-royal-wave-a8ux8dyh-pooler.eastus2.azure.neon.tech/neondb?sslmode=require
+DATABASE_URL=postgresql://helpdesk_db_avyz_user:kUc1OsIzdy2aFRpzyKm47CFeRpDvbb0I@dpg-d4fmlouuk2gs73ffefn0-a.oregon-postgres.render.com/helpdesk_db_avyz
 JWT_SECRET=minihelpdesk_super_secret_jwt_key_2024
 ```
 
@@ -93,7 +93,7 @@ npm start
 
 ## 📝 Notes:
 
-- All data is stored in your NeonDB PostgreSQL database
+- All data is stored in your Render.com PostgreSQL database
 - Settings are saved locally in browser
 - Logout: Clear browser localStorage or clear data
 

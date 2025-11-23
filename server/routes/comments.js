@@ -46,6 +46,14 @@ router.post('/', async (req, res) => {
   try {
     const { content, task, author, attachments } = req.body;
     
+    // Extract mentioned users from content
+    const mentionRegex = /@(\w+)/g;
+    const mentions = [];
+    let match;
+    while ((match = mentionRegex.exec(content)) !== null) {
+      mentions.push(match[1]);
+    }
+    
     // Get author info for the response
     const authorResult = await req.app.locals.pool.query(
       'SELECT id, username, full_name, avatar FROM users WHERE id = $1',
@@ -64,9 +72,49 @@ router.post('/', async (req, res) => {
       author: authorResult.rows[0] || { id: author }
     };
     
+    // Create notifications for mentioned users
+    if (mentions.length > 0) {
+      for (const username of mentions) {
+        const userResult = await req.app.locals.pool.query(
+          'SELECT id FROM users WHERE username = $1 OR email = $1',
+          [username]
+        );
+        if (userResult.rows.length > 0) {
+          const mentionedUserId = userResult.rows[0].id;
+          // Create notification (if notifications table exists)
+          try {
+            await req.app.locals.pool.query(
+              `INSERT INTO notifications (user_id, type, message, related_id, related_type)
+               VALUES ($1, 'mention', $2, $3, 'comment')
+               ON CONFLICT DO NOTHING`,
+              [mentionedUserId, `You were mentioned in a comment on task ${task}`, comment.id]
+            );
+          } catch (err) {
+            // Notifications table might not exist yet
+            console.log('Notification creation skipped:', err.message);
+          }
+        }
+      }
+    }
+    
     // Emit real-time update via WebSocket
     if (req.app.locals.io) {
       req.app.locals.io.to(`task-${task}`).emit('new-comment', commentWithAuthor);
+      // Notify mentioned users
+      if (mentions.length > 0) {
+        for (const username of mentions) {
+          const userResult = await req.app.locals.pool.query(
+            'SELECT id FROM users WHERE username = $1 OR email = $1',
+            [username]
+          );
+          if (userResult.rows.length > 0) {
+            req.app.locals.io.to(`user-${userResult.rows[0].id}`).emit('mention', {
+              comment: commentWithAuthor,
+              taskId: task
+            });
+          }
+        }
+      }
     }
     
     res.status(201).json(commentWithAuthor);

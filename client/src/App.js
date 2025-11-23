@@ -12,6 +12,7 @@ import Dashboard from './pages/Dashboard';
 import Landing from './pages/Landing';
 import Settings from './pages/Settings';
 import WorkspaceDetails from './pages/WorkspaceDetails';
+import SharePage from './pages/SharePage';
 
 // Main App Layout Component
 const AppLayout = ({ children }) => (
@@ -65,6 +66,9 @@ function App() {
             <ProjectView />
           </AppLayout>
         } />
+        
+        {/* Share Page (no layout) */}
+        <Route path="/share/:token" element={<SharePage />} />
       </Routes>
     </Router>
   );

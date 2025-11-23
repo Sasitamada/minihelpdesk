@@ -8,7 +8,7 @@ A beautiful project management application with instant access and optional auth
 
 ```env
 PORT=5000
-DATABASE_URL=postgresql://neondb_owner:npg_bnDM2fCkcxQ5@ep-royal-wave-a8ux8dyh-pooler.eastus2.azure.neon.tech/neondb?sslmode=require
+DATABASE_URL=postgresql://helpdesk_db_avyz_user:kUc1OsIzdy2aFRpzyKm47CFeRpDvbb0I@dpg-d4fmlouuk2gs73ffefn0-a.oregon-postgres.render.com/helpdesk_db_avyz
 JWT_SECRET=minihelpdesk_super_secret_jwt_key_2024
 ```
 
@@ -85,12 +85,17 @@ npm start
 
 ## 🗄️ Database
 
-All data is stored in **NeonDB PostgreSQL** (cloud database)
+All data is stored in **Render.com PostgreSQL** (cloud database)
 - Workspaces
 - Projects
 - Tasks
 - Comments
 - Users (optional)
+
+**Database Details:**
+- Host: dpg-d4fmlouuk2gs73ffefn0-a.oregon-postgres.render.com
+- Port: 5432
+- Database: helpdesk_db_avyz
 
 ---
 
@@ -122,7 +127,7 @@ All data is stored in **NeonDB PostgreSQL** (cloud database)
 
 ## 📝 Notes
 
-- Workspaces, tasks saved to NeonDB
+- Workspaces, tasks saved to Render.com PostgreSQL database
 - Settings saved in browser localStorage
 - Authentication is optional
 - All features work without login

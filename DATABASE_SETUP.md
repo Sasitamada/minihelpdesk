@@ -2,7 +2,7 @@
 
 ## Important: Database Connection
 
-Your NeonDB PostgreSQL database is already configured in the code, but you need to create a `.env` file in the `server` folder.
+Your Render.com PostgreSQL database is already configured in the code, but you need to create a `.env` file in the `server` folder.
 
 ## Steps to Set Up Database:
 
@@ -12,14 +12,14 @@ Create a file named `.env` (not `.env.txt`) in the `server` folder with this con
 
 ```env
 PORT=5000
-DATABASE_URL=postgresql://neondb_owner:npg_bnDM2fCkcxQ5@ep-royal-wave-a8ux8dyh-pooler.eastus2.azure.neon.tech/neondb?sslmode=require
+DATABASE_URL=postgresql://helpdesk_db_avyz_user:kUc1OsIzdy2aFRpzyKm47CFeRpDvbb0I@dpg-d4fmlouuk2gs73ffefn0-a.oregon-postgres.render.com/helpdesk_db_avyz
 JWT_SECRET=minihelpdesk_super_secret_jwt_key_2024_change_this_in_production
 ```
 
 ### 2. Start the Server
 
 The server will automatically:
-- Connect to your NeonDB PostgreSQL database
+- Connect to your Render.com PostgreSQL database
 - Create all necessary tables
 - Be ready to store your data
 
@@ -46,11 +46,19 @@ Server running on port 5000
 4. `comments` - Comments on tasks
 5. `users` - User accounts
 
-All data will be saved permanently in your NeonDB database!
+All data will be saved permanently in your Render.com PostgreSQL database!
+
+## Database Connection Details:
+
+- **Hostname:** dpg-d4fmlouuk2gs73ffefn0-a.oregon-postgres.render.com
+- **Port:** 5432
+- **Database:** helpdesk_db_avyz
+- **Username:** helpdesk_db_avyz_user
 
 ## Troubleshooting:
 
 If you get connection errors:
 1. Make sure the `.env` file exists in the `server` folder
 2. Check that the connection string is correct
-3. Verify NeonDB is accessible from your network
+3. Verify Render.com database is accessible from your network
+4. Ensure your IP is allowed in Render.com's IP restrictions (if configured)

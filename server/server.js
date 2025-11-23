@@ -10,25 +10,34 @@ const app = express();
 const server = http.createServer(app);
 const io = new Server(server, {
   cors: {
-    origin: "http://localhost:3000",
+    origin: ["http://localhost:3000", "http://localhost:3001", "http://localhost:3002"],
     methods: ["GET", "POST"]
   }
 });
 
 // Middleware
-app.use(cors());
+app.use(cors({
+  origin: ['http://localhost:3000', 'http://localhost:3001', 'http://localhost:3002'],
+  credentials: true
+}));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+
+// Logging middleware
+app.use((req, res, next) => {
+  console.log(`${new Date().toISOString()} - ${req.method} ${req.path}`);
+  next();
+});
 
 // Serve uploaded files
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
-// Connect to PostgreSQL/Neon
+// Connect to PostgreSQL (Render.com)
 const pool = new Pool({
-  connectionString: process.env.DATABASE_URL || 'postgresql://neondb_owner:npg_bnDM2fCkcxQ5@ep-royal-wave-a8ux8dyh-pooler.eastus2.azure.neon.tech/neondb?sslmode=require',
-  ssl: {
+  connectionString: process.env.DATABASE_URL,
+  ssl: process.env.DATABASE_URL?.includes('render.com') ? {
     rejectUnauthorized: false
-  }
+  } : undefined
 });
 
 pool.connect()
@@ -197,6 +206,86 @@ async function createTables() {
       )
     `);
 
+    // Task assignees (multiple assignees support)
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS task_assignees (
+        id SERIAL PRIMARY KEY,
+        task_id INTEGER REFERENCES tasks(id) ON DELETE CASCADE,
+        user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+        assigned_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        assigned_by INTEGER REFERENCES users(id),
+        UNIQUE(task_id, user_id)
+      )
+    `);
+
+    // Task watchers/followers
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS task_watchers (
+        id SERIAL PRIMARY KEY,
+        task_id INTEGER REFERENCES tasks(id) ON DELETE CASCADE,
+        user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+        watched_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(task_id, user_id)
+      )
+    `);
+
+    // Task checklists (separate from subtasks)
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS task_checklists (
+        id SERIAL PRIMARY KEY,
+        task_id INTEGER REFERENCES tasks(id) ON DELETE CASCADE,
+        name VARCHAR(255) NOT NULL,
+        items JSONB DEFAULT '[]',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    // Notifications table
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS notifications (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+        type VARCHAR(50) NOT NULL,
+        message TEXT NOT NULL,
+        related_id INTEGER,
+        related_type VARCHAR(50),
+        read BOOLEAN DEFAULT FALSE,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    // Shareable links table
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS shareable_links (
+        id SERIAL PRIMARY KEY,
+        token VARCHAR(255) UNIQUE NOT NULL,
+        resource_type VARCHAR(50) NOT NULL,
+        resource_id INTEGER NOT NULL,
+        created_by INTEGER REFERENCES users(id),
+        expires_at TIMESTAMP,
+        access_level VARCHAR(50) DEFAULT 'view',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    // Automations table
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS automations (
+        id SERIAL PRIMARY KEY,
+        workspace_id INTEGER REFERENCES workspaces(id) ON DELETE CASCADE,
+        name VARCHAR(255) NOT NULL,
+        trigger_type VARCHAR(50) NOT NULL,
+        trigger_conditions JSONB DEFAULT '{}',
+        action_type VARCHAR(50) NOT NULL,
+        action_data JSONB DEFAULT '{}',
+        enabled BOOLEAN DEFAULT TRUE,
+        created_by INTEGER REFERENCES users(id),
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
     await client.query(`
       CREATE TABLE IF NOT EXISTS workspace_chat_messages (
         id SERIAL PRIMARY KEY,
@@ -228,6 +317,12 @@ app.use('/api/auth', require('./routes/auth'));
 app.use('/api/users', require('./routes/users'));
 app.use('/api/workspace-invitations', require('./routes/workspaceInvitations'));
 app.use('/api/workspace-chat', require('./routes/workspaceChat'));
+app.use('/api/sharing', require('./routes/sharing'));
+app.use('/api/automations', require('./routes/automations'));
+
+// Initialize Automation Engine
+const AutomationEngine = require('./services/automationEngine');
+let automationEngine;
 
 // Error handling middleware
 app.use((err, req, res, next) => {
@@ -254,6 +349,22 @@ io.on('connection', (socket) => {
     socket.join(`workspace-${workspaceId}`);
   });
 
+  // Join user room for notifications
+  socket.on('join-user', (userId) => {
+    socket.join(`user-${userId}`);
+  });
+
+  // Real-time task updates
+  socket.on('task-update', (data) => {
+    const { taskId, workspaceId } = data;
+    if (workspaceId) {
+      io.to(`workspace-${workspaceId}`).emit('task-updated', data);
+    }
+    if (taskId) {
+      io.to(`task-${taskId}`).emit('task-updated', data);
+    }
+  });
+
   socket.on('disconnect', () => {
     console.log('User disconnected:', socket.id);
   });
@@ -262,7 +373,60 @@ io.on('connection', (socket) => {
 // Make io available to routes
 app.locals.io = io;
 
+// Initialize Automation Engine after pool is ready
+automationEngine = new AutomationEngine(pool, io);
+app.locals.automationEngine = automationEngine;
+
+// Due date reminder checker (runs every hour)
+setInterval(async () => {
+  try {
+    const client = await pool.connect();
+    try {
+      // Get all tasks with due dates in the next 24 hours
+      const { rows: tasks } = await client.query(
+        `SELECT t.*, ta.user_id as assignee_id
+         FROM tasks t
+         LEFT JOIN task_assignees ta ON t.id = ta.task_id
+         WHERE t.due_date IS NOT NULL
+         AND t.due_date > NOW()
+         AND t.due_date <= NOW() + INTERVAL '24 hours'
+         AND t.status != 'done'`
+      );
+
+      // Group tasks by workspace
+      const tasksByWorkspace = {};
+      for (const task of tasks) {
+        if (!tasksByWorkspace[task.workspace_id]) {
+          tasksByWorkspace[task.workspace_id] = [];
+        }
+        tasksByWorkspace[task.workspace_id].push(task);
+      }
+
+      // Execute due_date_close automations for each workspace
+      for (const [workspaceId, workspaceTasks] of Object.entries(tasksByWorkspace)) {
+        for (const task of workspaceTasks) {
+          if (automationEngine) {
+            await automationEngine.executeAutomations('due_date_close', {
+              taskId: task.id,
+              workspaceId: parseInt(workspaceId),
+              projectId: task.project_id,
+              dueDate: task.due_date,
+              assigneeId: task.assignee_id
+            });
+          }
+        }
+      }
+    } finally {
+      client.release();
+    }
+  } catch (error) {
+    console.error('Error checking due dates:', error);
+  }
+}, 60 * 60 * 1000); // Run every hour
+
 const PORT = process.env.PORT || 5000;
 server.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
+  console.log('Automation engine initialized');
+  console.log('Due date reminder checker running (every hour)');
 });

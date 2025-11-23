@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { workspacesAPI, projectsAPI, tasksAPI } from '../services/api';
-import TaskModal from '../components/TaskModal';
+import EnhancedTaskModal from '../components/EnhancedTaskModal';
 import WorkspaceChat from '../components/WorkspaceChat';
+import TeamManagement from '../components/TeamManagement';
+import AutomationManager from '../components/AutomationManager';
 
 const WorkspaceDetails = () => {
   const { workspaceId } = useParams();
@@ -13,6 +15,9 @@ const WorkspaceDetails = () => {
   const [loading, setLoading] = useState(true);
   const [showEditModal, setShowEditModal] = useState(false);
   const [showAddTaskModal, setShowAddTaskModal] = useState(false);
+  const [activeTab, setActiveTab] = useState('overview');
+  const [userRole, setUserRole] = useState('member');
+  const [isOwner, setIsOwner] = useState(false);
   const [editData, setEditData] = useState({ name: '', description: '', color: '#7b68ee' });
 
   useEffect(() => {
@@ -28,6 +33,31 @@ const WorkspaceDetails = () => {
         description: workspaceRes.data.description || '',
         color: workspaceRes.data.color || '#7b68ee'
       });
+
+      // Check user role
+      const user = JSON.parse(localStorage.getItem('user') || '{}');
+      console.log('Workspace owner:', workspaceRes.data.owner, 'User ID:', user.id);
+      
+      // Check if user is workspace owner
+      if (workspaceRes.data.owner == user.id || workspaceRes.data.owner_id == user.id) {
+        setUserRole('admin');
+        setIsOwner(true);
+        console.log('User is workspace owner - setting role to admin');
+      } else {
+        // Check member role
+        try {
+          const membersRes = await workspacesAPI.getMembers(workspaceId);
+          const member = membersRes.data.find(m => m.user_id == user.id);
+          if (member) {
+            setUserRole(member.role || 'member');
+            console.log('User role from members:', member.role);
+          } else {
+            console.log('User not found in members list');
+          }
+        } catch (err) {
+          console.error('Error checking member role:', err);
+        }
+      }
 
       const projectsRes = await projectsAPI.getByWorkspace(workspaceId);
       setProjects(projectsRes.data);
@@ -174,6 +204,78 @@ const WorkspaceDetails = () => {
         </div>
       </div>
 
+      {/* Tabs */}
+      <div style={{
+        display: 'flex',
+        gap: '8px',
+        borderBottom: '2px solid #e0e0e0',
+        marginBottom: '24px'
+      }}>
+        <button
+          onClick={() => setActiveTab('overview')}
+          style={{
+            padding: '12px 24px',
+            background: 'none',
+            border: 'none',
+            borderBottom: activeTab === 'overview' ? '3px solid #6b5ce6' : '3px solid transparent',
+            color: activeTab === 'overview' ? '#6b5ce6' : '#6c757d',
+            cursor: 'pointer',
+            fontWeight: activeTab === 'overview' ? '600' : '400',
+            fontSize: '14px'
+          }}
+        >
+          Overview
+        </button>
+        <button
+          onClick={() => setActiveTab('team')}
+          style={{
+            padding: '12px 24px',
+            background: 'none',
+            border: 'none',
+            borderBottom: activeTab === 'team' ? '3px solid #6b5ce6' : '3px solid transparent',
+            color: activeTab === 'team' ? '#6b5ce6' : '#6c757d',
+            cursor: 'pointer',
+            fontWeight: activeTab === 'team' ? '600' : '400',
+            fontSize: '14px'
+          }}
+        >
+          Team
+        </button>
+        <button
+          onClick={() => setActiveTab('automations')}
+          style={{
+            padding: '12px 24px',
+            background: 'none',
+            border: 'none',
+            borderBottom: activeTab === 'automations' ? '3px solid #6b5ce6' : '3px solid transparent',
+            color: activeTab === 'automations' ? '#6b5ce6' : '#6c757d',
+            cursor: 'pointer',
+            fontWeight: activeTab === 'automations' ? '600' : '400',
+            fontSize: '14px'
+          }}
+        >
+          Automations
+        </button>
+        <button
+          onClick={() => setActiveTab('chat')}
+          style={{
+            padding: '12px 24px',
+            background: 'none',
+            border: 'none',
+            borderBottom: activeTab === 'chat' ? '3px solid #6b5ce6' : '3px solid transparent',
+            color: activeTab === 'chat' ? '#6b5ce6' : '#6c757d',
+            cursor: 'pointer',
+            fontWeight: activeTab === 'chat' ? '600' : '400',
+            fontSize: '14px'
+          }}
+        >
+          Chat
+        </button>
+      </div>
+
+      {/* Tab Content */}
+      {activeTab === 'overview' && (
+        <>
       {/* Stats Cards */}
       <div style={{ 
         display: 'grid', 
@@ -376,12 +478,28 @@ const WorkspaceDetails = () => {
         </div>
       )}
 
-      {/* Workspace Chat */}
-      <WorkspaceChat workspaceId={workspaceId} />
+        </>
+      )}
+
+      {activeTab === 'team' && (
+        <TeamManagement 
+          workspaceId={workspaceId} 
+          currentUserRole={userRole} 
+          isOwner={isOwner}
+        />
+      )}
+
+      {activeTab === 'automations' && (
+        <AutomationManager workspaceId={workspaceId} />
+      )}
+
+      {activeTab === 'chat' && (
+        <WorkspaceChat workspaceId={workspaceId} />
+      )}
 
       {/* Add Task Modal */}
       {showAddTaskModal && (
-        <TaskModal
+        <EnhancedTaskModal
           onClose={() => setShowAddTaskModal(false)}
           onSave={handleAddTask}
           project={{ id: projects[0]?.id, workspace: workspaceId }}

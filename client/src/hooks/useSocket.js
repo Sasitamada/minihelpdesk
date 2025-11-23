@@ -13,6 +13,12 @@ const useSocket = (url = 'http://localhost:5000') => {
     newSocket.on('connect', () => {
       console.log('Socket connected');
       setConnected(true);
+      
+      // Join user room for notifications
+      const user = JSON.parse(localStorage.getItem('user') || '{}');
+      if (user.id) {
+        newSocket.emit('join-user', user.id);
+      }
     });
 
     newSocket.on('disconnect', () => {

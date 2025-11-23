@@ -1,6 +1,12 @@
 import axios from 'axios';
 
-const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
+// Ensure API URL always ends with /api
+let API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000';
+if (!API_URL.endsWith('/api')) {
+  API_URL = API_URL.endsWith('/') ? `${API_URL}api` : `${API_URL}/api`;
+}
+
+console.log('API Base URL:', API_URL);
 
 const api = axios.create({
   baseURL: API_URL,
@@ -8,6 +14,30 @@ const api = axios.create({
     'Content-Type': 'application/json',
   },
 });
+
+// Add request interceptor for debugging
+api.interceptors.request.use(
+  (config) => {
+    console.log(`[API Request] ${config.method?.toUpperCase()} ${config.url}`, config.data);
+    return config;
+  },
+  (error) => {
+    console.error('[API Request Error]', error);
+    return Promise.reject(error);
+  }
+);
+
+// Add response interceptor for debugging
+api.interceptors.response.use(
+  (response) => {
+    console.log(`[API Response] ${response.config.method?.toUpperCase()} ${response.config.url}`, response.data);
+    return response;
+  },
+  (error) => {
+    console.error(`[API Error] ${error.config?.method?.toUpperCase()} ${error.config?.url}`, error.response?.data || error.message);
+    return Promise.reject(error);
+  }
+);
 
 // Workspaces
 export const workspacesAPI = {
@@ -48,6 +78,17 @@ export const tasksAPI = {
   deleteAttachment: (id, filename, userId) => api.delete(`/tasks/${id}/attachments/${filename}`, { data: { userId } }),
   addReminder: (id, data) => api.post(`/tasks/${id}/reminders`, data),
   getHistory: (id) => api.get(`/tasks/${id}/history`),
+  // New endpoints for enhanced features
+  getAssignees: (id) => api.get(`/tasks/${id}/assignees`),
+  addAssignee: (id, userId) => api.post(`/tasks/${id}/assignees`, { userId }),
+  removeAssignee: (id, userId) => api.delete(`/tasks/${id}/assignees/${userId}`),
+  getWatchers: (id) => api.get(`/tasks/${id}/watchers`),
+  addWatcher: (id, userId) => api.post(`/tasks/${id}/watchers`, { userId }),
+  removeWatcher: (id, userId) => api.delete(`/tasks/${id}/watchers/${userId}`),
+  getChecklists: (id) => api.get(`/tasks/${id}/checklists`),
+  createChecklist: (id, data) => api.post(`/tasks/${id}/checklists`, data),
+  updateChecklist: (id, checklistId, data) => api.put(`/tasks/${id}/checklists/${checklistId}`, data),
+  deleteChecklist: (id, checklistId) => api.delete(`/tasks/${id}/checklists/${checklistId}`),
 };
 
 // Comments
@@ -68,6 +109,16 @@ export const workspaceChatAPI = {
     },
   }),
   getAiSuggestion: (workspaceId, prompt) => api.post(`/workspace-chat/${workspaceId}/ai`, { prompt }),
+};
+
+// Automations
+export const automationsAPI = {
+  getByWorkspace: (workspaceId) => api.get(`/automations/workspace/${workspaceId}`),
+  getById: (id) => api.get(`/automations/${id}`),
+  create: (data) => api.post('/automations', data),
+  update: (id, data) => api.put(`/automations/${id}`, data),
+  delete: (id) => api.delete(`/automations/${id}`),
+  toggle: (id) => api.patch(`/automations/${id}/toggle`),
 };
 
 // Auth
@@ -93,6 +144,14 @@ export const workspaceInvitationsAPI = {
   accept: (token, data) => api.post(`/workspace-invitations/accept/${token}`, data),
   getByWorkspace: (workspaceId) => api.get(`/workspace-invitations/workspace/${workspaceId}`),
   cancel: (id) => api.delete(`/workspace-invitations/${id}`),
+};
+
+// Sharing
+export const sharingAPI = {
+  generate: (data) => api.post('/sharing/generate', data),
+  getByToken: (token) => api.get(`/sharing/${token}`),
+  getByResource: (type, id) => api.get(`/sharing/resource/${type}/${id}`),
+  revoke: (token) => api.delete(`/sharing/${token}`),
 };
 
 export default api;

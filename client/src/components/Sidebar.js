@@ -41,7 +41,11 @@ const Sidebar = () => {
 
   const handleCreateWorkspace = async (data) => {
     try {
-      await workspacesAPI.create(data);
+      const user = JSON.parse(localStorage.getItem('user') || '{}');
+      await workspacesAPI.create({
+        ...data,
+        owner: user.id || null,
+      });
       setShowCreateModal(false);
       loadWorkspaces();
     } catch (error) {

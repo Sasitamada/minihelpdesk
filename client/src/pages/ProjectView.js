@@ -197,7 +197,12 @@ const ProjectView = () => {
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
         <div>
-          <h1 style={{ fontSize: '28px', fontWeight: '600', marginBottom: '8px' }}>
+          <div style={{ fontSize: '13px', color: '#6c757d', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+            {project.workspace_name || 'Workspace'} 
+            {project.space_name ? ` • ${project.space_name}` : ''} 
+            {project.folder_name ? ` • ${project.folder_name}` : ''}
+          </div>
+          <h1 style={{ fontSize: '28px', fontWeight: '600', margin: '4px 0 8px' }}>
             {project.name}
           </h1>
           <p style={{ color: '#6c757d' }}>{project.description || 'No description'}</p>

@@ -43,7 +43,7 @@ api.interceptors.response.use(
 export const workspacesAPI = {
   getAll: () => api.get('/workspaces'),
   getById: (id) => api.get(`/workspaces/${id}`),
-  create: (data) => api.post('/workspaces', data),
+  create: (data) => api.post('/workspaces/open', data),
   update: (id, data) => api.put(`/workspaces/${id}`, data),
   delete: (id) => api.delete(`/workspaces/${id}`),
   getMembers: (id) => api.get(`/workspaces/${id}/members`),
@@ -109,6 +109,30 @@ export const workspaceChatAPI = {
     },
   }),
   getAiSuggestion: (workspaceId, prompt) => api.post(`/workspace-chat/${workspaceId}/ai`, { prompt }),
+};
+
+// Spaces & Folders
+export const spacesAPI = {
+  getByWorkspace: (workspaceId) => api.get(`/spaces/workspace/${workspaceId}`),
+  create: (data) => api.post('/spaces', data),
+  update: (id, data) => api.put(`/spaces/${id}`, data),
+  delete: (id) => api.delete(`/spaces/${id}`),
+};
+
+export const foldersAPI = {
+  getBySpace: (spaceId) => api.get(`/folders/space/${spaceId}`),
+  create: (data) => api.post('/folders', data),
+  update: (id, data) => api.put(`/folders/${id}`, data),
+  delete: (id) => api.delete(`/folders/${id}`),
+};
+
+// Integrations
+export const integrationsAPI = {
+  getByWorkspace: (workspaceId) => api.get(`/integrations/workspace/${workspaceId}`),
+  connect: (data) => api.post('/integrations/connect', data),
+  disconnect: (data) => api.post('/integrations/disconnect', data),
+  sync: (id) => api.post(`/integrations/${id}/sync`),
+  getLogs: (id) => api.get(`/integrations/${id}/logs`),
 };
 
 // Automations

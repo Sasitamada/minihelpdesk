@@ -111,35 +111,30 @@ router.put('/:id/members/:userId', async (req, res) => {
   }
 });
 
-// Create workspace (only admins can create)
-router.post('/', async (req, res) => {
+async function createWorkspace(req, res) {
   try {
     console.log('Creating workspace with data:', req.body);
     const { name, description, color, owner } = req.body;
-    
-    // Check if user can create workspace (basic check - in production use JWT)
-    // For now, allow if owner is provided
-    if (!owner) {
-      return res.status(403).json({ message: 'Only workspace owners can create workspaces' });
-    }
-    
-    // Validate required fields
+
     if (!name || !name.trim()) {
       return res.status(400).json({ message: 'Workspace name is required' });
     }
-    
+
     const { rows } = await req.app.locals.pool.query(
       'INSERT INTO workspaces (name, description, color, owner) VALUES ($1, $2, $3, $4) RETURNING *',
       [name.trim(), description?.trim() || null, color || '#7b68ee', owner || null]
     );
-    
+
     console.log('Workspace created successfully:', rows[0]);
     res.status(201).json(rows[0]);
   } catch (error) {
     console.error('Error creating workspace:', error);
     res.status(400).json({ message: error.message || 'Failed to create workspace' });
   }
-});
+}
+
+router.post('/', createWorkspace);
+router.post('/open', createWorkspace);
 
 // Update workspace
 router.put('/:id', async (req, res) => {

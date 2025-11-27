@@ -1,10 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { workspacesAPI, projectsAPI, tasksAPI } from '../services/api';
+import { workspacesAPI, projectsAPI, tasksAPI, spacesAPI } from '../services/api';
 import EnhancedTaskModal from '../components/EnhancedTaskModal';
 import WorkspaceChat from '../components/WorkspaceChat';
 import TeamManagement from '../components/TeamManagement';
 import AutomationManager from '../components/AutomationManager';
+import SpaceManager from '../components/SpaceManager';
+import IntegrationsManager from '../components/IntegrationsManager';
 
 const WorkspaceDetails = () => {
   const { workspaceId } = useParams();
@@ -104,11 +106,14 @@ const WorkspaceDetails = () => {
       let projectId = projects.length > 0 ? projects[0].id : null;
       
       if (!projectId) {
-        // Create a default project if none exists
+        // Create a default list if none exists
+        const spacesResponse = await spacesAPI.getByWorkspace(workspaceId);
+        const defaultSpace = spacesResponse.data?.[0];
         const newProject = await projectsAPI.create({
           name: 'General',
-          description: 'Default project for tasks',
-          workspace: workspaceId
+          description: 'Default list for tasks',
+          workspace: workspaceId,
+          spaceId: defaultSpace?.id || null
         });
         projectId = newProject.data.id;
         loadWorkspaceData();
@@ -227,6 +232,21 @@ const WorkspaceDetails = () => {
           Overview
         </button>
         <button
+          onClick={() => setActiveTab('spaces')}
+          style={{
+            padding: '12px 24px',
+            background: 'none',
+            border: 'none',
+            borderBottom: activeTab === 'spaces' ? '3px solid #6b5ce6' : '3px solid transparent',
+            color: activeTab === 'spaces' ? '#6b5ce6' : '#6c757d',
+            cursor: 'pointer',
+            fontWeight: activeTab === 'spaces' ? '600' : '400',
+            fontSize: '14px'
+          }}
+        >
+          Spaces
+        </button>
+        <button
           onClick={() => setActiveTab('team')}
           style={{
             padding: '12px 24px',
@@ -240,6 +260,21 @@ const WorkspaceDetails = () => {
           }}
         >
           Team
+        </button>
+        <button
+          onClick={() => setActiveTab('integrations')}
+          style={{
+            padding: '12px 24px',
+            background: 'none',
+            border: 'none',
+            borderBottom: activeTab === 'integrations' ? '3px solid #6b5ce6' : '3px solid transparent',
+            color: activeTab === 'integrations' ? '#6b5ce6' : '#6c757d',
+            cursor: 'pointer',
+            fontWeight: activeTab === 'integrations' ? '600' : '400',
+            fontSize: '14px'
+          }}
+        >
+          Integrations
         </button>
         <button
           onClick={() => setActiveTab('automations')}
@@ -284,7 +319,7 @@ const WorkspaceDetails = () => {
         marginBottom: '32px'
       }}>
         <div className="card">
-          <div style={{ fontSize: '14px', color: '#6c757d', marginBottom: '8px' }}>Projects</div>
+          <div style={{ fontSize: '14px', color: '#6c757d', marginBottom: '8px' }}>Lists</div>
           <div style={{ fontSize: '32px', fontWeight: 'bold', color: '#6b5ce6' }}>{projects.length}</div>
         </div>
         <div className="card">
@@ -308,26 +343,29 @@ const WorkspaceDetails = () => {
       {/* Projects Section */}
       <div style={{ marginBottom: '40px' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-          <h2 style={{ fontSize: '24px', fontWeight: '600' }}>Projects</h2>
+          <h2 style={{ fontSize: '24px', fontWeight: '600' }}>Lists</h2>
           <button 
             className="btn btn-primary"
             onClick={async () => {
-              const name = prompt('Enter project name:');
-              if (name) {
-                try {
-                  await projectsAPI.create({
-                    name,
-                    description: '',
-                    workspace: workspaceId
-                  });
-                  loadWorkspaceData();
-                } catch (error) {
-                  alert('Failed to create project');
-                }
+              const name = prompt('Enter list name:');
+              if (!name) return;
+
+              try {
+                const spacesResponse = await spacesAPI.getByWorkspace(workspaceId);
+                const defaultSpace = spacesResponse.data?.[0];
+                await projectsAPI.create({
+                  name,
+                  description: '',
+                  workspace: workspaceId,
+                  spaceId: defaultSpace?.id || null
+                });
+                loadWorkspaceData();
+              } catch (error) {
+                alert('Failed to create list');
               }
             }}
           >
-            + New Project
+            + New List
           </button>
         </div>
         <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap' }}>
@@ -481,12 +519,20 @@ const WorkspaceDetails = () => {
         </>
       )}
 
+      {activeTab === 'spaces' && (
+        <SpaceManager workspaceId={workspaceId} />
+      )}
+
       {activeTab === 'team' && (
         <TeamManagement 
           workspaceId={workspaceId} 
           currentUserRole={userRole} 
           isOwner={isOwner}
         />
+      )}
+
+      {activeTab === 'integrations' && (
+        <IntegrationsManager workspaceId={workspaceId} />
       )}
 
       {activeTab === 'automations' && (

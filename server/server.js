@@ -76,7 +76,73 @@ async function createTables() {
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
     `);
+
+    // Spaces (between workspace and folders/lists)
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS spaces (
+        id SERIAL PRIMARY KEY,
+        workspace_id INTEGER REFERENCES workspaces(id) ON DELETE CASCADE,
+        name VARCHAR(255) NOT NULL,
+        description TEXT,
+        color VARCHAR(50) DEFAULT '#ff6b6b',
+        icon VARCHAR(50),
+        created_by INTEGER REFERENCES users(id),
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    // Folders (grouping lists inside a space)
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS folders (
+        id SERIAL PRIMARY KEY,
+        space_id INTEGER REFERENCES spaces(id) ON DELETE CASCADE,
+        name VARCHAR(255) NOT NULL,
+        description TEXT,
+        color VARCHAR(50) DEFAULT '#6b5ce6',
+        created_by INTEGER REFERENCES users(id),
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    await client.query(`
+      ALTER TABLE projects
+      ADD COLUMN IF NOT EXISTS space_id INTEGER REFERENCES spaces(id) ON DELETE SET NULL
+    `);
+
+    await client.query(`
+      ALTER TABLE projects
+      ADD COLUMN IF NOT EXISTS folder_id INTEGER REFERENCES folders(id) ON DELETE SET NULL
+    `);
     
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS integrations (
+        id SERIAL PRIMARY KEY,
+        workspace_id INTEGER REFERENCES workspaces(id) ON DELETE CASCADE,
+        type VARCHAR(50) NOT NULL,
+        status VARCHAR(50) DEFAULT 'disconnected',
+        settings JSONB DEFAULT '{}'::jsonb,
+        auth_data JSONB DEFAULT '{}'::jsonb,
+        created_by INTEGER REFERENCES users(id),
+        last_synced_at TIMESTAMP,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(workspace_id, type)
+      )
+    `);
+
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS integration_logs (
+        id SERIAL PRIMARY KEY,
+        integration_id INTEGER REFERENCES integrations(id) ON DELETE CASCADE,
+        level VARCHAR(20) DEFAULT 'info',
+        message TEXT NOT NULL,
+        metadata JSONB DEFAULT '{}'::jsonb,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
     await client.query(`
       CREATE TABLE IF NOT EXISTS tasks (
         id SERIAL PRIMARY KEY,
@@ -318,6 +384,9 @@ app.use('/api/users', require('./routes/users'));
 app.use('/api/workspace-invitations', require('./routes/workspaceInvitations'));
 app.use('/api/workspace-chat', require('./routes/workspaceChat'));
 app.use('/api/sharing', require('./routes/sharing'));
+app.use('/api/spaces', require('./routes/spaces'));
+app.use('/api/folders', require('./routes/folders'));
+app.use('/api/integrations', require('./routes/integrations'));
 app.use('/api/automations', require('./routes/automations'));
 
 // Initialize Automation Engine

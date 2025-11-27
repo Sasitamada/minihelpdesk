@@ -23,8 +23,14 @@ const WorkspaceList = () => {
 
   const handleCreateWorkspace = async (data) => {
     try {
-      console.log('Creating workspace with data:', data);
-      const response = await workspacesAPI.create(data);
+      const user = JSON.parse(localStorage.getItem('user') || '{}');
+      const payload = {
+        ...data,
+        owner: user.id || null,
+      };
+
+      console.log('Creating workspace with data:', payload);
+      const response = await workspacesAPI.create(payload);
       console.log('Workspace created successfully:', response.data);
       setShowCreateModal(false);
       loadWorkspaces();

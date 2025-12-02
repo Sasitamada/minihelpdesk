@@ -1,12 +1,19 @@
 import axios from 'axios';
 
 // Ensure API URL always ends with /api
-let API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000';
+let API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5001';
 if (!API_URL.endsWith('/api')) {
   API_URL = API_URL.endsWith('/') ? `${API_URL}api` : `${API_URL}/api`;
 }
 
-console.log('API Base URL:', API_URL);
+// Force log to console to verify correct URL is loaded
+console.log('%c🚀 API Base URL:', 'color: green; font-weight: bold; font-size: 14px;', API_URL);
+console.log('%c🚀 Server Port: 5001', 'color: green; font-weight: bold;');
+console.log('%c✅ Client configured correctly!', 'color: green; font-weight: bold;');
+if (API_URL.includes('5000')) {
+  console.error('%c❌ ERROR: API URL is using port 5000! Should be 5001!', 'color: red; font-weight: bold; font-size: 16px;');
+  console.error('%cPlease clear browser cache and hard refresh (Cmd+Shift+R)', 'color: red; font-weight: bold;');
+}
 
 const api = axios.create({
   baseURL: API_URL,

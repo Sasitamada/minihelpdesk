@@ -20,6 +20,7 @@ const WorkspaceChat = ({ workspaceId }) => {
 
   useEffect(() => {
     loadMessages();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [workspaceId]);
 
   useEffect(() => {

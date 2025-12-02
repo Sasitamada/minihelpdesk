@@ -486,7 +486,7 @@ const TaskModal = ({ task, onClose, onSave, onDelete, project }) => {
                         marginBottom: '4px'
                       }}>
                         <span style={{ flex: 1 }}>{att.filename}</span>
-                        <a href={`http://localhost:5000${att.path}`} target="_blank" rel="noopener noreferrer" style={{ fontSize: '12px' }}>View</a>
+                        <a href={`http://localhost:5001${att.path}`} target="_blank" rel="noopener noreferrer" style={{ fontSize: '12px' }}>View</a>
                         <button 
                           className="btn btn-secondary"
                           style={{ padding: '4px 8px', fontSize: '12px' }}
@@ -545,7 +545,7 @@ const TaskModal = ({ task, onClose, onSave, onDelete, project }) => {
                       <div className="flex items-center gap-2 mb-2">
                         {comment.author?.avatar ? (
                           <img 
-                            src={`http://localhost:5000${comment.author.avatar}`} 
+                            src={`http://localhost:5001${comment.author.avatar}`} 
                             alt={comment.author.username} 
                             className="w-6 h-6 rounded-full" 
                           />

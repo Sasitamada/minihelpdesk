@@ -1,8 +1,7 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useRef } from 'react';
 import { format, differenceInDays, addDays, startOfWeek, endOfWeek, eachDayOfInterval } from 'date-fns';
 
 const GanttView = ({ tasks, onTaskClick }) => {
-  const [scrollPosition, setScrollPosition] = useState(0);
   const scrollRef = useRef(null);
 
   // Get date range from tasks

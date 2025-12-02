@@ -121,7 +121,7 @@ const RichTextComment = ({ taskId, onSave, placeholder = "Add a comment..." }) =
               className="w-full text-left px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2"
             >
               {user.avatar ? (
-                <img src={`http://localhost:5000${user.avatar}`} alt={user.username} className="w-6 h-6 rounded-full" />
+                <img src={`http://localhost:5001${user.avatar}`} alt={user.username} className="w-6 h-6 rounded-full" />
               ) : (
                 <div className="w-6 h-6 rounded-full bg-primary-500 flex items-center justify-center text-white text-xs">
                   {(user.full_name || user.username || 'U').charAt(0).toUpperCase()}

@@ -56,6 +56,7 @@ const IntegrationsManager = ({ workspaceId }) => {
     if (workspaceId) {
       loadIntegrations();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [workspaceId]);
 
   const loadIntegrations = async () => {

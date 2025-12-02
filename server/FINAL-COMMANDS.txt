@@ -1,0 +1,52 @@
+===========================================
+🚀 MINIHELPDESK - READY TO START
+===========================================
+
+✅ FIXES APPLIED:
+- Changed server port from 5000 to 5001 (to avoid macOS AirPlay conflict)
+- Updated all client files to use port 5001
+- Database connection configured (Render.com PostgreSQL)
+- All hardcoded localhost:5000 references updated
+
+===========================================
+📋 COMMANDS TO RUN:
+===========================================
+
+OPTION 1: Use the startup script (Recommended)
+----------------------------------------------
+cd /Users/sasitamda/Desktop/minihelpdesk-2/server
+./RUN-MINIHELPDESK.sh
+
+OPTION 2: Manual start
+----------------------------------------------
+cd /Users/sasitamda/Desktop/minihelpdesk-2/server
+lsof -ti:5001 | xargs kill -9 2>/dev/null
+npm start
+
+OPTION 3: One-liner
+----------------------------------------------
+cd /Users/sasitamda/Desktop/minihelpdesk-2/server && lsof -ti:5001 | xargs kill -9 2>/dev/null; sleep 2; npm start
+
+===========================================
+✅ WHAT WILL HAPPEN:
+===========================================
+
+1. Server will connect to Render.com PostgreSQL database
+2. All tables will be created automatically
+3. Server will start on http://localhost:5001
+4. API will be available at http://localhost:5001/api
+
+===========================================
+🌐 CLIENT CONFIGURATION:
+===========================================
+
+The React client is already configured to connect to:
+- API: http://localhost:5001/api
+- Socket: http://localhost:5001
+- Proxy: http://localhost:5001
+
+To start the client (in a separate terminal):
+cd /Users/sasitamda/Desktop/minihelpdesk-2/client
+npm start
+
+===========================================

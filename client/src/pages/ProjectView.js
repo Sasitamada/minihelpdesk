@@ -35,10 +35,12 @@ const ProjectView = () => {
   useEffect(() => {
     loadProject();
     loadTasks();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId]);
 
   useEffect(() => {
     applyFilters();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tasks, filters]);
 
   // Real-time task updates via WebSocket
@@ -58,6 +60,7 @@ const ProjectView = () => {
     return () => {
       socket.off('task-updated', handleTaskUpdate);
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [socket, projectId, project]);
 
   const loadProject = async () => {

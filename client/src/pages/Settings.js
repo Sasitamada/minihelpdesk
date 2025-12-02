@@ -25,7 +25,7 @@ const Settings = () => {
       bio: user.bio || ''
     });
     if (user.avatar) {
-      setAvatarPreview(`http://localhost:5000${user.avatar}`);
+      setAvatarPreview(`http://localhost:5001${user.avatar}`);
     }
     loadUserProfile();
   }, []);
@@ -43,7 +43,7 @@ const Settings = () => {
           bio: userData.bio || ''
         });
         if (userData.avatar) {
-          setAvatarPreview(`http://localhost:5000${userData.avatar}`);
+          setAvatarPreview(`http://localhost:5001${userData.avatar}`);
         }
       }
     } catch (error) {

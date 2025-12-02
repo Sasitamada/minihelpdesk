@@ -11,6 +11,7 @@ const ChatView = ({ tasks, onTaskClick }) => {
     if (selectedTask) {
       loadMessages();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedTask]);
 
   useEffect(() => {
@@ -22,7 +23,7 @@ const ChatView = ({ tasks, onTaskClick }) => {
     // In a real implementation, you would load comments as messages
     // For now, we'll use task comments
     try {
-      const response = await fetch(`http://localhost:5000/api/comments/task/${selectedTask.id || selectedTask._id}`);
+      const response = await fetch(`http://localhost:5001/api/comments/task/${selectedTask.id || selectedTask._id}`);
       const data = await response.json();
       setMessages(data || []);
     } catch (error) {
@@ -39,7 +40,7 @@ const ChatView = ({ tasks, onTaskClick }) => {
 
     const user = JSON.parse(localStorage.getItem('user') || '{}');
     try {
-      const response = await fetch('http://localhost:5000/api/comments', {
+      const response = await fetch('http://localhost:5001/api/comments', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

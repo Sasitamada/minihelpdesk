@@ -12,6 +12,7 @@ const SpaceManager = ({ workspaceId }) => {
     if (workspaceId) {
       loadStructure();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [workspaceId, refreshKey]);
 
   const loadStructure = async () => {

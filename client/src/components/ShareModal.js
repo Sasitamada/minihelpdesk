@@ -9,6 +9,7 @@ const ShareModal = ({ resourceType, resourceId, onClose }) => {
 
   useEffect(() => {
     loadLinks();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [resourceType, resourceId]);
 
   const loadLinks = async () => {
@@ -24,7 +25,7 @@ const ShareModal = ({ resourceType, resourceId, onClose }) => {
     setLoading(true);
     try {
       const user = JSON.parse(localStorage.getItem('user') || '{}');
-      const response = await sharingAPI.generate({
+      await sharingAPI.generate({
         resourceType,
         resourceId,
         expiresIn: parseInt(expiresIn),

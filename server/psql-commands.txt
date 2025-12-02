@@ -1,0 +1,10 @@
+-- Commands to run in psql:
+
+-- 1. Create the database
+CREATE DATABASE minihelpdesk;
+
+-- 2. Verify it was created
+\l
+
+-- 3. Exit psql
+\q

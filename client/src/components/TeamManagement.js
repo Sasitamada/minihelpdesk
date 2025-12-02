@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { workspacesAPI, workspaceInvitationsAPI, usersAPI } from '../services/api';
+import { workspacesAPI, workspaceInvitationsAPI } from '../services/api';
 
 const TeamManagement = ({ workspaceId, currentUserRole, isOwner = false }) => {
   const [members, setMembers] = useState([]);
@@ -14,6 +14,7 @@ const TeamManagement = ({ workspaceId, currentUserRole, isOwner = false }) => {
   useEffect(() => {
     loadMembers();
     loadInvitations();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [workspaceId]);
 
   const loadMembers = async () => {
@@ -123,7 +124,7 @@ const TeamManagement = ({ workspaceId, currentUserRole, isOwner = false }) => {
   }, [workspaceId]);
   
   const user = JSON.parse(localStorage.getItem('user') || '{}');
-  const userIsOwner = workspaceOwner == user.id || isOwner;
+  const userIsOwner = workspaceOwner === user.id || isOwner;
   const canManage = currentUserRole === 'admin' || userIsOwner;
   
   console.log('TeamManagement - currentUserRole:', currentUserRole, 'isOwner:', isOwner, 'workspaceOwner:', workspaceOwner, 'user.id:', user.id, 'canManage:', canManage);
@@ -176,7 +177,7 @@ const TeamManagement = ({ workspaceId, currentUserRole, isOwner = false }) => {
               <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flex: 1 }}>
                 {member.avatar ? (
                   <img
-                    src={`http://localhost:5000${member.avatar}`}
+                    src={`http://localhost:5001${member.avatar}`}
                     alt={member.full_name || member.username}
                     style={{
                       width: '40px',

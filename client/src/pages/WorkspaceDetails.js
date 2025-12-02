@@ -24,6 +24,7 @@ const WorkspaceDetails = () => {
 
   useEffect(() => {
     loadWorkspaceData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [workspaceId]);
 
   const loadWorkspaceData = async () => {
@@ -41,7 +42,7 @@ const WorkspaceDetails = () => {
       console.log('Workspace owner:', workspaceRes.data.owner, 'User ID:', user.id);
       
       // Check if user is workspace owner
-      if (workspaceRes.data.owner == user.id || workspaceRes.data.owner_id == user.id) {
+      if (workspaceRes.data.owner === user.id || workspaceRes.data.owner_id === user.id) {
         setUserRole('admin');
         setIsOwner(true);
         console.log('User is workspace owner - setting role to admin');
@@ -49,7 +50,7 @@ const WorkspaceDetails = () => {
         // Check member role
         try {
           const membersRes = await workspacesAPI.getMembers(workspaceId);
-          const member = membersRes.data.find(m => m.user_id == user.id);
+          const member = membersRes.data.find(m => m.user_id === user.id);
           if (member) {
             setUserRole(member.role || 'member');
             console.log('User role from members:', member.role);

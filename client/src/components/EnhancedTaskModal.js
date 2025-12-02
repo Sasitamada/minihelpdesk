@@ -27,7 +27,6 @@ const EnhancedTaskModal = ({ task, onClose, onSave, onDelete, project }) => {
   const [reminders, setReminders] = useState([]);
   const [customFields, setCustomFields] = useState([]);
   const [users, setUsers] = useState([]);
-  const [activeTab, setActiveTab] = useState('details');
   const [showAssigneeDropdown, setShowAssigneeDropdown] = useState(false);
   const [showWatcherDropdown, setShowWatcherDropdown] = useState(false);
   const [newChecklistName, setNewChecklistName] = useState('');
@@ -76,6 +75,7 @@ const EnhancedTaskModal = ({ task, onClose, onSave, onDelete, project }) => {
         socket.emit('leave-task', task.id);
       }
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [task, socket]);
 
   useEffect(() => {
@@ -120,6 +120,7 @@ const EnhancedTaskModal = ({ task, onClose, onSave, onDelete, project }) => {
       socket.off('task-updated', handleTaskUpdate);
       socket.off('mention', handleMention);
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [socket, task]);
 
   const loadTaskDetails = async () => {
@@ -358,32 +359,9 @@ const EnhancedTaskModal = ({ task, onClose, onSave, onDelete, project }) => {
     }
   };
 
-  const handleAddCustomField = (fieldType, fieldName, value) => {
-    setCustomFields([...customFields, { type: fieldType, name: fieldName, value }]);
-  };
-
   const formatDate = (dateString) => {
     if (!dateString) return '';
     return new Date(dateString).toLocaleString();
-  };
-
-  const getPriorityColor = (priority) => {
-    const colors = {
-      low: '#6c757d',
-      medium: '#ffc107',
-      high: '#fd7e14',
-      urgent: '#dc3545'
-    };
-    return colors[priority] || colors.medium;
-  };
-
-  const getStatusColor = (status) => {
-    const colors = {
-      todo: '#6c757d',
-      inprogress: '#4a9eff',
-      done: '#2ecc71'
-    };
-    return colors[status] || colors.todo;
   };
 
   const quillModules = {
@@ -647,7 +625,7 @@ const EnhancedTaskModal = ({ task, onClose, onSave, onDelete, project }) => {
                       {attachments.map((att, idx) => (
                         <div key={idx} className="flex items-center justify-between p-2 bg-gray-50 dark:bg-gray-700 rounded mb-2">
                           <a
-                            href={`http://localhost:5000${att.path}`}
+                            href={`http://localhost:5001${att.path}`}
                             target="_blank"
                             rel="noopener noreferrer"
                             className="text-primary-500 hover:underline"
@@ -676,7 +654,7 @@ const EnhancedTaskModal = ({ task, onClose, onSave, onDelete, project }) => {
                           <div className="flex items-center gap-2 mb-2">
                             {comment.author?.avatar ? (
                               <img
-                                src={`http://localhost:5000${comment.author.avatar}`}
+                                src={`http://localhost:5001${comment.author.avatar}`}
                                 alt={comment.author.username}
                                 className="w-6 h-6 rounded-full"
                               />
@@ -762,7 +740,7 @@ const EnhancedTaskModal = ({ task, onClose, onSave, onDelete, project }) => {
                               className="w-full text-left px-3 py-2 hover:bg-gray-100 dark:hover:bg-gray-600 flex items-center gap-2"
                             >
                               {user.avatar ? (
-                                <img src={`http://localhost:5000${user.avatar}`} alt={user.username} className="w-6 h-6 rounded-full" />
+                                <img src={`http://localhost:5001${user.avatar}`} alt={user.username} className="w-6 h-6 rounded-full" />
                               ) : (
                                 <div className="w-6 h-6 rounded-full bg-primary-500 flex items-center justify-center text-white text-xs">
                                   {(user.full_name || user.username || 'U').charAt(0).toUpperCase()}
@@ -782,7 +760,7 @@ const EnhancedTaskModal = ({ task, onClose, onSave, onDelete, project }) => {
                       <div key={assignee.id} className="flex items-center justify-between p-2 bg-gray-50 dark:bg-gray-700 rounded mb-1">
                         <div className="flex items-center gap-2">
                           {user.avatar ? (
-                            <img src={`http://localhost:5000${user.avatar}`} alt={user.username} className="w-6 h-6 rounded-full" />
+                                <img src={`http://localhost:5001${user.avatar}`} alt={user.username} className="w-6 h-6 rounded-full" />
                           ) : (
                             <div className="w-6 h-6 rounded-full bg-primary-500 flex items-center justify-center text-white text-xs">
                               {(user.full_name || user.username || 'U').charAt(0).toUpperCase()}
@@ -821,7 +799,7 @@ const EnhancedTaskModal = ({ task, onClose, onSave, onDelete, project }) => {
                               className="w-full text-left px-3 py-2 hover:bg-gray-100 dark:hover:bg-gray-600 flex items-center gap-2"
                             >
                               {user.avatar ? (
-                                <img src={`http://localhost:5000${user.avatar}`} alt={user.username} className="w-6 h-6 rounded-full" />
+                                <img src={`http://localhost:5001${user.avatar}`} alt={user.username} className="w-6 h-6 rounded-full" />
                               ) : (
                                 <div className="w-6 h-6 rounded-full bg-primary-500 flex items-center justify-center text-white text-xs">
                                   {(user.full_name || user.username || 'U').charAt(0).toUpperCase()}
@@ -841,7 +819,7 @@ const EnhancedTaskModal = ({ task, onClose, onSave, onDelete, project }) => {
                       <div key={watcher.id} className="flex items-center justify-between p-2 bg-gray-50 dark:bg-gray-700 rounded mb-1">
                         <div className="flex items-center gap-2">
                           {user.avatar ? (
-                            <img src={`http://localhost:5000${user.avatar}`} alt={user.username} className="w-6 h-6 rounded-full" />
+                                <img src={`http://localhost:5001${user.avatar}`} alt={user.username} className="w-6 h-6 rounded-full" />
                           ) : (
                             <div className="w-6 h-6 rounded-full bg-primary-500 flex items-center justify-center text-white text-xs">
                               {(user.full_name || user.username || 'U').charAt(0).toUpperCase()}

@@ -14,6 +14,7 @@ const SharePage = () => {
 
   useEffect(() => {
     loadShareResource();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token]);
 
   const loadShareResource = async () => {

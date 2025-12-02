@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { automationsAPI, usersAPI, workspacesAPI } from '../services/api';
+import { automationsAPI, usersAPI } from '../services/api';
 
 const AutomationManager = ({ workspaceId }) => {
   const [automations, setAutomations] = useState([]);
@@ -17,7 +17,7 @@ const AutomationManager = ({ workspaceId }) => {
   useEffect(() => {
     loadAutomations();
     loadUsers();
-  }, [workspaceId]);
+  }, [workspaceId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const loadAutomations = async () => {
     try {

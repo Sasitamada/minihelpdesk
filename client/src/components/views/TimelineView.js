@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { format, differenceInDays, addDays, startOfWeek, endOfWeek, eachDayOfInterval } from 'date-fns';
+import { format, differenceInDays, startOfWeek, endOfWeek, eachDayOfInterval } from 'date-fns';
 
 const TimelineView = ({ tasks, onTaskClick }) => {
   const [timeframe, setTimeframe] = useState('week'); // week, month, quarter

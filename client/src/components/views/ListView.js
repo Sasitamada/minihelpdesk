@@ -1,5 +1,4 @@
 import React from 'react';
-import TaskCard from '../TaskCard';
 
 const ListView = ({ tasks, onTaskClick, onTaskUpdate }) => {
   const handleStatusChange = async (taskId, newStatus) => {

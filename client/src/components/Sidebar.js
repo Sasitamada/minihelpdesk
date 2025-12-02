@@ -7,13 +7,11 @@ const Sidebar = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const [workspaces, setWorkspaces] = useState([]);
-  const [activeItem, setActiveItem] = useState('dashboard');
   const [loading, setLoading] = useState(true);
   const [showCreateModal, setShowCreateModal] = useState(false);
 
   useEffect(() => {
     loadWorkspaces();
-    setActiveItem(location.pathname);
   }, [location.pathname]);
 
   const loadWorkspaces = async () => {
@@ -28,15 +26,9 @@ const Sidebar = () => {
   };
 
   const handleWorkspaceClick = (workspace) => {
-    setActiveItem(workspace.id);
     if (workspace?.id) {
       navigate(`/workspaces/${workspace.id}`);
     }
-  };
-
-  const handleDashboardClick = () => {
-    setActiveItem('dashboard');
-    navigate('/dashboard');
   };
 
   const handleCreateWorkspace = async (data) => {

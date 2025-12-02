@@ -1,0 +1,22 @@
+✅ Database 'minihelpdesk' created successfully!
+
+NEXT STEPS:
+
+1. Exit psql:
+   Type: \q
+
+2. Create .env file (replace YOUR_PASSWORD with your PostgreSQL password):
+   cat > .env << 'ENVEOF'
+DATABASE_URL=postgresql://postgres:YOUR_PASSWORD@localhost:5432/minihelpdesk
+PORT=5000
+JWT_SECRET=minihelpdesk-secret-key-change-in-production
+ENVEOF
+
+3. Start the server:
+   ./start-server.sh
+   
+   OR manually:
+   lsof -ti:5000 | xargs kill -9
+   npm start
+
+The server will automatically create all tables on first run!

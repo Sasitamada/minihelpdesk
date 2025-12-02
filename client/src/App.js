@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import './App.css';
 import './pages/Landing.css';
@@ -8,7 +8,7 @@ import Sidebar from './components/Sidebar';
 import Header from './components/Header';
 import WorkspaceList from './pages/WorkspaceList';
 import ProjectView from './pages/ProjectView';
-import Dashboard from './pages/Dashboard';
+import Dashboard from './pages/EnhancedDashboard';
 import Landing from './pages/Landing';
 import Settings from './pages/Settings';
 import WorkspaceDetails from './pages/WorkspaceDetails';

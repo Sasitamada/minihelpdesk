@@ -1,0 +1,10 @@
+node_modules/
+server/node_modules/
+*.log
+.env
+uploads/
+node_modules/
+server/node_modules/
+uploads/
+.env
+*.log

@@ -1,21 +1,24 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useParams } from 'react-router-dom';
-import { projectsAPI, tasksAPI } from '../services/api';
+import { listsAPI, tasksAPI, workspacesAPI } from '../services/api';
 import ViewSwitcher from '../components/ViewSwitcher';
 import KanbanBoard from '../components/KanbanBoard';
-import ListView from '../components/views/ListView';
+import ClickUpBoardView from '../components/views/ClickUpBoardView';
+import EnhancedListView from '../components/views/EnhancedListView';
 import CalendarView from '../components/views/CalendarView';
+import ClickUpCalendarView from '../components/views/ClickUpCalendarView';
 import GanttView from '../components/views/GanttView';
 import TableView from '../components/views/TableView';
-import ChatView from '../components/views/ChatView';
 import TimelineView from '../components/views/TimelineView';
+import WorkloadView from '../components/views/WorkloadView';
+import ActivityView from '../components/views/ActivityView';
 import EnhancedTaskModal from '../components/EnhancedTaskModal';
 import ShareModal from '../components/ShareModal';
 import useSocket from '../hooks/useSocket';
 
 const ProjectView = () => {
-  const { projectId } = useParams();
-  const [project, setProject] = useState(null);
+  const { projectId } = useParams(); // This is actually listId now
+  const [list, setList] = useState(null);
   const [tasks, setTasks] = useState([]);
   const [filteredTasks, setFilteredTasks] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -28,9 +31,11 @@ const ProjectView = () => {
     assignedTo: '',
     tag: ''
   });
-  const [currentView, setCurrentView] = useState('board');
+  const [currentView, setCurrentView] = useState('list');
   const [showShareModal, setShowShareModal] = useState(false);
   const { socket } = useSocket();
+  const [workspaceMembers, setWorkspaceMembers] = useState([]);
+  const [activityFeed, setActivityFeed] = useState([]);
 
   useEffect(() => {
     loadProject();
@@ -54,27 +59,57 @@ const ProjectView = () => {
 
     socket.on('task-updated', handleTaskUpdate);
     
-    // Join project room for real-time updates
-    socket.emit('join-workspace', project?.workspace_id);
+    // Join workspace room for real-time updates
+    socket.emit('join-workspace', list?.workspace_id);
 
     return () => {
       socket.off('task-updated', handleTaskUpdate);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [socket, projectId, project]);
+  }, [socket, projectId, list]);
 
   const loadProject = async () => {
     try {
-      const response = await projectsAPI.getById(projectId);
-      setProject(response.data);
+      // Try lists API first, fallback to projects API for backward compatibility
+      try {
+        const response = await listsAPI.getById(projectId);
+        setList(response.data);
+        if (response.data?.workspace_id) {
+          loadWorkspaceMembers(response.data.workspace_id);
+        }
+      } catch (err) {
+        // Fallback: try projects API (for old URLs)
+        const projectsAPI = (await import('../services/api')).projectsAPI;
+        const response = await projectsAPI.getById(projectId);
+        setList(response.data);
+        if (response.data?.workspace_id) {
+          loadWorkspaceMembers(response.data.workspace_id);
+        }
+      }
     } catch (error) {
-      console.error('Error loading project:', error);
+      console.error('Error loading list:', error);
+    }
+  };
+
+  const loadWorkspaceMembers = async (workspaceId) => {
+    try {
+      const response = await workspacesAPI.getMembers(workspaceId);
+      setWorkspaceMembers(response.data || []);
+    } catch (error) {
+      console.error('Error loading workspace members:', error);
     }
   };
 
   const loadTasks = async () => {
     try {
-      const params = { projectId };
+      // Use listId instead of projectId (backward compatible)
+      const params = {
+        listId: projectId,
+        includeAssignees: 'true',
+        includeHistory: 'true'
+      };
+      // Also support projectId for backward compatibility
+      if (!params.listId) params.projectId = projectId;
       if (filters.search) params.search = filters.search;
       if (filters.status) params.status = filters.status;
       if (filters.priority) params.priority = filters.priority;
@@ -82,7 +117,25 @@ const ProjectView = () => {
       if (filters.tag) params.tag = filters.tag;
       
       const response = await tasksAPI.getAll(params);
-      setTasks(response.data);
+      // Handle new paginated response format (backward compatible)
+      const tasksData = Array.isArray(response.data) ? response.data : (response.data?.data || []);
+      setTasks(tasksData);
+
+      const historyItems = tasksData.flatMap(task =>
+        (task.history || []).map(entry => ({
+          id: entry.id,
+          taskId: task.id,
+          taskTitle: task.title,
+          action: entry.action,
+          userId: entry.user_id,
+          userName: entry.full_name || entry.username,
+          createdAt: entry.created_at,
+          details: entry.field_name
+            ? `${entry.field_name}: ${entry.old_value || '-'} → ${entry.new_value || '-'}`
+            : entry.action
+        }))
+      );
+      setActivityFeed(historyItems);
     } catch (error) {
       console.error('Error loading tasks:', error);
     } finally {
@@ -128,8 +181,9 @@ const ProjectView = () => {
       const user = JSON.parse(localStorage.getItem('user') || '{}');
       await tasksAPI.create({
         ...taskData,
-        project: projectId,
-        workspace: project?.workspace_id || project?.workspace,
+        listId: projectId, // Use listId for new ClickUp-style hierarchy
+        project: projectId, // Keep for backward compatibility
+        workspace: list?.workspace_id || list?.workspace,
         createdBy: user.id,
         dueDate: taskData.dueDate ? new Date(taskData.dueDate).toISOString() : null
       });
@@ -143,15 +197,91 @@ const ProjectView = () => {
   const handleUpdateTask = async (taskId, updates) => {
     try {
       const user = JSON.parse(localStorage.getItem('user') || '{}');
-      await tasksAPI.update(taskId, {
+      const userId = user.id || updates.userId;
+      
+      if (!userId) {
+        const errorMsg = 'User not authenticated. Please log in again.';
+        alert(errorMsg);
+        throw new Error(errorMsg);
+      }
+      
+      // Use PATCH for partial updates (supports optimistic concurrency)
+      await tasksAPI.patch(taskId, {
         ...updates,
-        userId: user.id,
+        userId: userId,
         dueDate: updates.dueDate ? new Date(updates.dueDate).toISOString() : null
       });
       loadTasks();
-      setSelectedTask(null);
+      if (selectedTask?.id === taskId) {
+        setSelectedTask(null);
+      }
     } catch (error) {
       console.error('Error updating task:', error);
+      // Handle authentication error (403)
+      if (error.response?.status === 403) {
+        const errorMsg = error.response?.data?.message || 'Authentication required. Please log in again.';
+        alert(errorMsg);
+        // Optionally redirect to login or reload
+        return;
+      }
+      // Handle conflict error (409)
+      if (error.response?.status === 409) {
+        alert('This task was modified by another user. Please refresh and try again.');
+        loadTasks(); // Reload to get latest version
+        return;
+      }
+      throw error; // Re-throw for component to handle
+    }
+  };
+
+  const handleDueDateChange = async (taskId, value) => {
+    try {
+      const normalizedDate =
+        value instanceof Date
+          ? value.toISOString()
+          : value
+          ? new Date(value).toISOString()
+          : null;
+      await handleUpdateTask(taskId, {
+        dueDate: normalizedDate
+      });
+    } catch (error) {
+      console.error('Error updating due date:', error);
+    }
+  };
+
+  const handleAssigneeChange = async (taskId, userId) => {
+    try {
+      if (!userId) {
+        const task = tasks.find(t => (t.id || t._id) === taskId);
+        if (task?.assignees?.length) {
+          await Promise.all(
+            task.assignees.map(assignee =>
+              tasksAPI.removeAssignee(taskId, assignee.user_id || assignee.id)
+            )
+          );
+        }
+      } else {
+        await tasksAPI.addAssignee(taskId, userId);
+      }
+      await loadTasks();
+    } catch (error) {
+      console.error('Error updating assignee:', error);
+    }
+  };
+
+  const handleBulkUpdate = async (taskIds, updates) => {
+    try {
+      const user = JSON.parse(localStorage.getItem('user') || '{}');
+      if (!user.id) {
+        throw new Error('User not authenticated. Please log in again.');
+      }
+      await tasksAPI.bulkPatch(taskIds, updates);
+      loadTasks();
+    } catch (error) {
+      console.error('Error in bulk update:', error);
+      const errorMessage = error.response?.data?.message || error.message || 'Failed to update tasks. Please try again.';
+      throw new Error(errorMessage);
     }
   };
 
@@ -167,10 +297,21 @@ const ProjectView = () => {
 
   const handleTaskDrop = async (taskId, newStatus) => {
     try {
-      await tasksAPI.update(taskId, { status: newStatus });
+      const user = JSON.parse(localStorage.getItem('user') || '{}');
+      const userId = user.id;
+      
+      if (!userId) {
+        alert('User not authenticated. Please log in again.');
+        return;
+      }
+      
+      await tasksAPI.update(taskId, { status: newStatus, userId });
       loadTasks();
     } catch (error) {
       console.error('Error updating task status:', error);
+      if (error.response?.status === 403) {
+        alert('Authentication required. Please log in again.');
+      }
     }
   };
 
@@ -188,12 +329,38 @@ const ProjectView = () => {
     });
   };
 
+  const statusOptions = useMemo(() => {
+    const map = new Map();
+    tasks.forEach(task => {
+      if (!task.status) return;
+      if (!map.has(task.status)) {
+        map.set(task.status, {
+          value: task.status,
+          label: task.status.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
+        });
+      }
+    });
+    return Array.from(map.values());
+  }, [tasks]);
+
+  const assigneeOptions = useMemo(() => {
+    return workspaceMembers.map(member => ({
+      id: member.user_id || member.id,
+      name: member.full_name || member.username || 'Member'
+    }));
+  }, [workspaceMembers]);
+
+  const unscheduledTasks = useMemo(
+    () => tasks.filter(task => !task.due_date),
+    [tasks]
+  );
+
   if (loading) {
     return <div style={{ textAlign: 'center', padding: '40px' }}>Loading...</div>;
   }
 
-  if (!project) {
-    return <div style={{ textAlign: 'center', padding: '40px' }}>Project not found</div>;
+  if (!list) {
+    return <div style={{ textAlign: 'center', padding: '40px' }}>List not found</div>;
   }
 
   return (
@@ -201,14 +368,19 @@ const ProjectView = () => {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
         <div>
           <div style={{ fontSize: '13px', color: '#6c757d', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
-            {project.workspace_name || 'Workspace'} 
-            {project.space_name ? ` • ${project.space_name}` : ''} 
-            {project.folder_name ? ` • ${project.folder_name}` : ''}
+            {list.workspace_name || 'Workspace'} 
+            {list.space_name ? ` • ${list.space_name}` : ''} 
+            {list.folder_name ? ` • ${list.folder_name}` : ''}
           </div>
           <h1 style={{ fontSize: '28px', fontWeight: '600', margin: '4px 0 8px' }}>
-            {project.name}
+            {list.name}
           </h1>
-          <p style={{ color: '#6c757d' }}>{project.description || 'No description'}</p>
+          <p style={{ color: '#6c757d' }}>{list.description || 'No description'}</p>
+          {list.task_count !== undefined && (
+            <p style={{ color: '#6c757d', fontSize: '14px', marginTop: '4px' }}>
+              {list.task_count} {list.task_count === 1 ? 'task' : 'tasks'}
+            </p>
+          )}
         </div>
         <div style={{ display: 'flex', gap: '12px' }}>
           <button
@@ -298,25 +470,41 @@ const ProjectView = () => {
 
       {/* Render Current View */}
       {currentView === 'list' && (
-        <ListView
+        <EnhancedListView
           tasks={filteredTasks}
           onTaskClick={(task) => setSelectedTask(task)}
           onTaskUpdate={handleUpdateTask}
+          onBulkUpdate={handleBulkUpdate}
+          onAssigneeChange={handleAssigneeChange}
+          onDueDateChange={handleDueDateChange}
+          statusOptions={statusOptions}
+          assigneeOptions={assigneeOptions}
+          isModalOpen={!!selectedTask}
         />
       )}
 
       {currentView === 'board' && (
-        <KanbanBoard 
+        <ClickUpBoardView
           tasks={filteredTasks}
           onTaskClick={(task) => setSelectedTask(task)}
           onTaskDrop={handleTaskDrop}
+          statusOptions={statusOptions}
         />
       )}
 
       {currentView === 'calendar' && (
-        <CalendarView
+        <ClickUpCalendarView
           tasks={filteredTasks}
           onTaskClick={(task) => setSelectedTask(task)}
+          onDateChange={(taskId, date) => handleDueDateChange(taskId, date)}
+        />
+      )}
+
+      {currentView === 'timeline' && (
+        <TimelineView
+          tasks={filteredTasks}
+          onTaskClick={(task) => setSelectedTask(task)}
+          onDateChange={(taskId, date) => handleDueDateChange(taskId, date)}
         />
       )}
 
@@ -324,6 +512,7 @@ const ProjectView = () => {
         <GanttView
           tasks={filteredTasks}
           onTaskClick={(task) => setSelectedTask(task)}
+          onDateChange={(taskId, date) => handleDueDateChange(taskId, date)}
         />
       )}
 
@@ -332,28 +521,27 @@ const ProjectView = () => {
           tasks={filteredTasks}
           onTaskClick={(task) => setSelectedTask(task)}
           onTaskUpdate={handleUpdateTask}
+          statusOptions={statusOptions}
         />
       )}
 
-      {currentView === 'chat' && (
-        <ChatView
-          tasks={filteredTasks}
+      {currentView === 'workload' && (
+        <WorkloadView
+          tasks={tasks}
+          members={workspaceMembers}
           onTaskClick={(task) => setSelectedTask(task)}
         />
       )}
 
-      {currentView === 'timeline' && (
-        <TimelineView
-          tasks={filteredTasks}
-          onTaskClick={(task) => setSelectedTask(task)}
-        />
+      {currentView === 'activity' && (
+        <ActivityView activities={activityFeed} />
       )}
 
       {showCreateModal && (
         <EnhancedTaskModal
           onClose={() => setShowCreateModal(false)}
           onSave={handleCreateTask}
-          project={project}
+          project={list}
         />
       )}
 
@@ -366,15 +554,15 @@ const ProjectView = () => {
             handleDeleteTask(selectedTask.id || selectedTask._id);
             setSelectedTask(null);
           }}
-          project={project}
+          project={list}
         />
       )}
 
       {/* Share Modal */}
-      {showShareModal && project && (
+      {showShareModal && list && (
         <ShareModal
-          resourceType="project"
-          resourceId={project.id}
+          resourceType="list"
+          resourceId={list.id}
           onClose={() => setShowShareModal(false)}
         />
       )}

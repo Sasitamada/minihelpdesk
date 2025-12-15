@@ -1,8 +1,9 @@
-import React, { useRef } from 'react';
+import React, { useRef, useState } from 'react';
 import { format, differenceInDays, addDays, startOfWeek, endOfWeek, eachDayOfInterval } from 'date-fns';
 
-const GanttView = ({ tasks, onTaskClick }) => {
+const GanttView = ({ tasks, onTaskClick, onDateChange }) => {
   const scrollRef = useRef(null);
+  const [draggedTaskId, setDraggedTaskId] = useState(null);
 
   // Get date range from tasks
   const getDateRange = () => {
@@ -45,8 +46,14 @@ const GanttView = ({ tasks, onTaskClick }) => {
     const daysFromStart = differenceInDays(taskDate, start);
     return {
       left: (daysFromStart / totalDays) * 100,
-      width: 2 // 2 days width
+      width: Math.max(3, (1 / totalDays) * 100 * 1.5)
     };
+  };
+
+  const handleDropOnDate = (date) => {
+    if (!draggedTaskId || !onDateChange) return;
+    onDateChange(draggedTaskId, date);
+    setDraggedTaskId(null);
   };
 
   const getPriorityColor = (priority) => {
@@ -121,7 +128,12 @@ const GanttView = ({ tasks, onTaskClick }) => {
                   }}
                   onClick={() => onTaskClick(task)}
                 >
-                  {task.title}
+                  <div>{task.title}</div>
+                  {task.blocked_count > 0 && (
+                    <span style={{ color: '#dc3545', fontSize: '11px' }}>
+                      ⛔ {task.blocked_count} blocker{task.blocked_count > 1 ? 's' : ''}
+                    </span>
+                  )}
                 </div>
 
                 {/* Gantt bar area */}
@@ -133,29 +145,49 @@ const GanttView = ({ tasks, onTaskClick }) => {
                     background: '#fafafa'
                   }}
                 >
+                  {days.map((day, idx) => (
+                    <div
+                      key={idx}
+                      onDragOver={(e) => e.preventDefault()}
+                      onDrop={() => handleDropOnDate(day)}
+                      style={{
+                        position: 'absolute',
+                        left: `${(idx / totalDays) * 100}%`,
+                        top: 0,
+                        width: `${100 / totalDays}%`,
+                        height: '50px',
+                        borderLeft: idx % 7 === 0 ? '1px dashed #e0e0e0' : 'none',
+                        zIndex: 1
+                      }}
+                    />
+                  ))}
                   {position && (
                     <div
+                      draggable
+                      onDragStart={() => setDraggedTaskId(task.id || task._id)}
                       onClick={() => onTaskClick(task)}
                       style={{
                         position: 'absolute',
                         left: `${position.left}%`,
                         top: '10px',
-                        width: '40px',
+                        width: `${position.width}%`,
+                        minWidth: '40px',
                         height: '30px',
                         background: getPriorityColor(task.priority),
                         borderRadius: '4px',
-                        cursor: 'pointer',
+                        cursor: 'grab',
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'center',
                         color: 'white',
                         fontSize: '10px',
                         fontWeight: '600',
-                        boxShadow: '0 2px 4px rgba(0,0,0,0.2)'
+                        boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
+                        zIndex: 2
                       }}
                       title={task.title}
                     >
-                      {task.title.substring(0, 3)}
+                      {task.title.substring(0, 6)}
                     </div>
                   )}
                 </div>

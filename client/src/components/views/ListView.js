@@ -108,8 +108,18 @@ const ListView = ({ tasks, onTaskClick, onTaskUpdate }) => {
 
               {/* Task Title & Description */}
               <div style={{ minWidth: 0 }}>
-                <div style={{ fontWeight: '600', marginBottom: '4px', color: '#333' }}>
-                  {task.title}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  {task.blocked_count > 0 && (
+                    <span
+                      title="This task is blocked by other tasks"
+                      style={{ color: '#dc3545' }}
+                    >
+                      ⛔
+                    </span>
+                  )}
+                  <div style={{ fontWeight: '600', marginBottom: '4px', color: '#333' }}>
+                    {task.title}
+                  </div>
                 </div>
                 {task.description && (
                   <div style={{

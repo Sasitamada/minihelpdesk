@@ -6,6 +6,7 @@ import WorkspaceChat from '../components/WorkspaceChat';
 import TeamManagement from '../components/TeamManagement';
 import AutomationManager from '../components/AutomationManager';
 import SpaceManager from '../components/SpaceManager';
+import EnhancedSpaceManager from '../components/EnhancedSpaceManager';
 import IntegrationsManager from '../components/IntegrationsManager';
 
 const WorkspaceDetails = () => {
@@ -66,7 +67,17 @@ const WorkspaceDetails = () => {
       setProjects(projectsRes.data);
 
       const tasksRes = await tasksAPI.getAll({ workspaceId });
-      setTasks(tasksRes.data);
+      // Handle new paginated response format: { data: [...], pagination: {...} }
+      // or old format: array directly
+      let tasksData = [];
+      if (Array.isArray(tasksRes.data)) {
+        tasksData = tasksRes.data;
+      } else if (tasksRes.data && Array.isArray(tasksRes.data.data)) {
+        tasksData = tasksRes.data.data;
+      } else if (Array.isArray(tasksRes)) {
+        tasksData = tasksRes;
+      }
+      setTasks(tasksData);
     } catch (error) {
       console.error('Error loading workspace:', error);
     } finally {
@@ -325,18 +336,18 @@ const WorkspaceDetails = () => {
         </div>
         <div className="card">
           <div style={{ fontSize: '14px', color: '#6c757d', marginBottom: '8px' }}>Total Tasks</div>
-          <div style={{ fontSize: '32px', fontWeight: 'bold', color: '#2c3e50' }}>{tasks.length}</div>
+          <div style={{ fontSize: '32px', fontWeight: 'bold', color: '#2c3e50' }}>{Array.isArray(tasks) ? tasks.length : 0}</div>
         </div>
         <div className="card">
           <div style={{ fontSize: '14px', color: '#6c757d', marginBottom: '8px' }}>Completed</div>
           <div style={{ fontSize: '32px', fontWeight: 'bold', color: '#2ecc71' }}>
-            {tasks.filter(t => t.status === 'done').length}
+            {Array.isArray(tasks) ? tasks.filter(t => t.status === 'done').length : 0}
           </div>
         </div>
         <div className="card">
           <div style={{ fontSize: '14px', color: '#6c757d', marginBottom: '8px' }}>In Progress</div>
           <div style={{ fontSize: '32px', fontWeight: 'bold', color: '#4a9eff' }}>
-            {tasks.filter(t => t.status === 'inprogress').length}
+            {Array.isArray(tasks) ? tasks.filter(t => t.status === 'inprogress').length : 0}
           </div>
         </div>
       </div>
@@ -429,7 +440,7 @@ const WorkspaceDetails = () => {
           </div>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-            {tasks.slice(0, 10).map(task => (
+            {Array.isArray(tasks) ? tasks.slice(0, 10).map(task => (
               <div 
                 key={task.id}
                 className="card"
@@ -453,7 +464,7 @@ const WorkspaceDetails = () => {
                   {task.priority}
                 </div>
               </div>
-            ))}
+            )) : null}
           </div>
         )}
       </div>
@@ -521,7 +532,7 @@ const WorkspaceDetails = () => {
       )}
 
       {activeTab === 'spaces' && (
-        <SpaceManager workspaceId={workspaceId} />
+        <EnhancedSpaceManager workspaceId={workspaceId} />
       )}
 
       {activeTab === 'team' && (

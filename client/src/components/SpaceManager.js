@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { spacesAPI, foldersAPI, projectsAPI } from '../services/api';
+import { spacesAPI, foldersAPI, listsAPI } from '../services/api';
 
 const SpaceManager = ({ workspaceId }) => {
   const [spaces, setSpaces] = useState([]);
@@ -81,10 +81,10 @@ const SpaceManager = ({ workspaceId }) => {
 
     try {
       const user = JSON.parse(localStorage.getItem('user') || '{}');
-      await projectsAPI.create({
+      await listsAPI.create({
         name,
         description: '',
-        workspace: workspaceId,
+        workspaceId,
         owner: user.id,
         spaceId,
         folderId,
@@ -99,7 +99,7 @@ const SpaceManager = ({ workspaceId }) => {
   const handleDeleteList = async (listId) => {
     if (!window.confirm('Delete this list and all of its tasks?')) return;
     try {
-      await projectsAPI.delete(listId);
+      await listsAPI.delete(listId);
       triggerRefresh();
     } catch (error) {
       console.error('Error deleting list:', error);

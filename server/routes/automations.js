@@ -37,15 +37,25 @@ router.get('/:id', async (req, res) => {
 // Create automation
 router.post('/', async (req, res) => {
   try {
-    const { workspaceId, name, triggerType, triggerConditions, actionType, actionData, createdBy } = req.body;
+    const { workspaceId, name, triggerType, triggerConditions, actionType, actionData, createdBy, 
+            scheduleType, scheduleConfig, listId, spaceId } = req.body;
     
     if (!workspaceId || !name || !triggerType || !actionType) {
       return res.status(400).json({ message: 'Missing required fields' });
     }
 
+    // Calculate next_run_at for recurring automations
+    let nextRunAt = null;
+    if (scheduleType && scheduleType !== 'none') {
+      const AutomationEngine = require('../services/automationEngine');
+      const tempEngine = new AutomationEngine(req.app.locals.pool, null);
+      nextRunAt = tempEngine.calculateNextRun(scheduleType, scheduleConfig || {});
+    }
+
     const { rows } = await req.app.locals.pool.query(
-      `INSERT INTO automations (workspace_id, name, trigger_type, trigger_conditions, action_type, action_data, created_by)
-       VALUES ($1, $2, $3, $4, $5, $6, $7)
+      `INSERT INTO automations (workspace_id, name, trigger_type, trigger_conditions, action_type, action_data, 
+                                created_by, schedule_type, schedule_config, list_id, space_id, next_run_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
        RETURNING *`,
       [
         workspaceId,
@@ -54,7 +64,12 @@ router.post('/', async (req, res) => {
         JSON.stringify(triggerConditions || {}),
         actionType,
         JSON.stringify(actionData || {}),
-        createdBy
+        createdBy,
+        scheduleType || null,
+        JSON.stringify(scheduleConfig || {}),
+        listId || null,
+        spaceId || null,
+        nextRunAt
       ]
     );
     
@@ -67,7 +82,8 @@ router.post('/', async (req, res) => {
 // Update automation
 router.put('/:id', async (req, res) => {
   try {
-    const { name, triggerType, triggerConditions, actionType, actionData, enabled } = req.body;
+    const { name, triggerType, triggerConditions, actionType, actionData, enabled, 
+            scheduleType, scheduleConfig, listId, spaceId } = req.body;
     const updates = [];
     const values = [];
     let paramIndex = 1;
@@ -101,6 +117,38 @@ router.put('/:id', async (req, res) => {
       updates.push(`enabled = $${paramIndex}`);
       values.push(enabled);
       paramIndex++;
+    }
+    if (scheduleType !== undefined) {
+      updates.push(`schedule_type = $${paramIndex}`);
+      values.push(scheduleType || null);
+      paramIndex++;
+    }
+    if (scheduleConfig !== undefined) {
+      updates.push(`schedule_config = $${paramIndex}`);
+      values.push(JSON.stringify(scheduleConfig || {}));
+      paramIndex++;
+    }
+    if (listId !== undefined) {
+      updates.push(`list_id = $${paramIndex}`);
+      values.push(listId || null);
+      paramIndex++;
+    }
+    if (spaceId !== undefined) {
+      updates.push(`space_id = $${paramIndex}`);
+      values.push(spaceId || null);
+      paramIndex++;
+    }
+
+    // Recalculate next_run_at if schedule changed
+    if (scheduleType !== undefined && scheduleType && scheduleType !== 'none') {
+      const AutomationEngine = require('../services/automationEngine');
+      const tempEngine = new AutomationEngine(req.app.locals.pool, null);
+      const nextRunAt = tempEngine.calculateNextRun(scheduleType, scheduleConfig || {});
+      updates.push(`next_run_at = $${paramIndex}`);
+      values.push(nextRunAt);
+      paramIndex++;
+    } else if (scheduleType === 'none' || scheduleType === null) {
+      updates.push(`next_run_at = NULL`);
     }
 
     if (updates.length === 0) {

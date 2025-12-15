@@ -3,12 +3,13 @@ import React from 'react';
 const ViewSwitcher = ({ currentView, onViewChange }) => {
   const views = [
     { id: 'list', name: 'List', icon: '📋' },
-    { id: 'board', name: 'Board', icon: '📊' },
+    { id: 'board', name: 'Board', icon: '🗂️' },
     { id: 'calendar', name: 'Calendar', icon: '📅' },
+    { id: 'timeline', name: 'Timeline', icon: '⏱️' },
     { id: 'gantt', name: 'Gantt', icon: '📈' },
     { id: 'table', name: 'Table', icon: '📑' },
-    { id: 'chat', name: 'Chat', icon: '💬' },
-    { id: 'timeline', name: 'Timeline', icon: '⏱️' }
+    { id: 'workload', name: 'Workload', icon: '⚖️' },
+    { id: 'activity', name: 'Activity', icon: '📰' }
   ];
 
   return (

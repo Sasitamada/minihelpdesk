@@ -4,7 +4,10 @@ import ReactQuill from 'react-quill';
 import 'react-quill/dist/quill.snow.css';
 import { commentsAPI, tasksAPI, usersAPI } from '../services/api';
 import RichTextComment from './RichTextComment';
+import ThreadedComments from './ThreadedComments';
 import ShareModal from './ShareModal';
+import TaskTimer from './TaskTimer';
+import TimeLogsList from './TimeLogsList';
 import useSocket from '../hooks/useSocket';
 
 const EnhancedTaskModal = ({ task, onClose, onSave, onDelete, project }) => {
@@ -14,7 +17,8 @@ const EnhancedTaskModal = ({ task, onClose, onSave, onDelete, project }) => {
     status: 'todo',
     priority: 'medium',
     dueDate: '',
-    tags: []
+    tags: [],
+    estimateMinutes: null
   });
 
   const [assignees, setAssignees] = useState([]);
@@ -26,6 +30,7 @@ const EnhancedTaskModal = ({ task, onClose, onSave, onDelete, project }) => {
   const [taskHistory, setTaskHistory] = useState([]);
   const [reminders, setReminders] = useState([]);
   const [customFields, setCustomFields] = useState([]);
+  const [dependencies, setDependencies] = useState({ waitingOn: [], blocking: [] });
   const [users, setUsers] = useState([]);
   const [showAssigneeDropdown, setShowAssigneeDropdown] = useState(false);
   const [showWatcherDropdown, setShowWatcherDropdown] = useState(false);
@@ -52,7 +57,8 @@ const EnhancedTaskModal = ({ task, onClose, onSave, onDelete, project }) => {
         status: task.status || 'todo',
         priority: task.priority || 'medium',
         dueDate: task.due_date ? new Date(task.due_date).toISOString().split('T')[0] : '',
-        tags: tags
+        tags: tags,
+        estimateMinutes: task.estimate_minutes || null
       });
       setDescription(task.description || '');
       setSubtasks(taskSubtasks);
@@ -63,6 +69,7 @@ const EnhancedTaskModal = ({ task, onClose, onSave, onDelete, project }) => {
       loadAssignees();
       loadWatchers();
       loadChecklists();
+      loadDependencies();
       
       if (socket && task.id) {
         socket.emit('join-task', task.id);
@@ -188,8 +195,50 @@ const EnhancedTaskModal = ({ task, onClose, onSave, onDelete, project }) => {
     }
   };
 
+  const loadDependencies = async () => {
+    if (!task?.id) return;
+    try {
+      const res = await tasksAPI.getDependencies(task.id);
+      setDependencies({
+        waitingOn: res.data?.waitingOn || [],
+        blocking: res.data?.blocking || []
+      });
+    } catch (error) {
+      console.error('Error loading dependencies:', error);
+    }
+  };
+
+  const handleAddDependency = async (dependencyTaskId) => {
+    if (!task?.id || !dependencyTaskId) return;
+    try {
+      await tasksAPI.addDependency(task.id, dependencyTaskId);
+      await loadDependencies();
+    } catch (error) {
+      console.error('Error adding dependency:', error);
+      alert(error.response?.data?.message || 'Failed to add dependency');
+    }
+  };
+
+  const handleRemoveDependency = async (dependencyTaskId) => {
+    if (!task?.id || !dependencyTaskId) return;
+    try {
+      await tasksAPI.removeDependency(task.id, dependencyTaskId);
+      await loadDependencies();
+    } catch (error) {
+      console.error('Error removing dependency:', error);
+      alert(error.response?.data?.message || 'Failed to remove dependency');
+    }
+  };
+
   const handleSubmit = async () => {
     const user = JSON.parse(localStorage.getItem('user') || '{}');
+    const userId = user.id;
+    
+    if (!userId) {
+      alert('User not authenticated. Please log in again.');
+      return;
+    }
+    
     await onSave({
       ...formData,
       description,
@@ -197,7 +246,8 @@ const EnhancedTaskModal = ({ task, onClose, onSave, onDelete, project }) => {
       tags: formData.tags,
       assignees: assignees.map(a => a.user_id || a.id),
       customFields,
-      userId: user.id
+      estimateMinutes: formData.estimateMinutes,
+      userId: userId
     });
   };
 
@@ -364,6 +414,49 @@ const EnhancedTaskModal = ({ task, onClose, onSave, onDelete, project }) => {
     return new Date(dateString).toLocaleString();
   };
 
+  // Parse estimate string (e.g., "2h", "30m", "1h 30m") to minutes
+  const parseEstimate = (str) => {
+    if (!str || !str.trim()) return null;
+    const strLower = str.toLowerCase().trim();
+    let totalMinutes = 0;
+    
+    // Match hours: "2h", "2h 30m", "2 hours"
+    const hourMatch = strLower.match(/(\d+)\s*(?:h|hour|hours)/);
+    if (hourMatch) {
+      totalMinutes += parseInt(hourMatch[1]) * 60;
+    }
+    
+    // Match minutes: "30m", "30 min", "30 minutes"
+    const minMatch = strLower.match(/(\d+)\s*(?:m|min|mins|minute|minutes)/);
+    if (minMatch) {
+      totalMinutes += parseInt(minMatch[1]);
+    }
+    
+    // If no units found, assume minutes
+    if (!hourMatch && !minMatch) {
+      const numMatch = strLower.match(/(\d+)/);
+      if (numMatch) {
+        totalMinutes = parseInt(numMatch[1]);
+      }
+    }
+    
+    return totalMinutes > 0 ? totalMinutes : null;
+  };
+
+  // Format minutes to estimate string (e.g., "2h 30m")
+  const formatEstimate = (minutes) => {
+    if (!minutes) return '';
+    const hours = Math.floor(minutes / 60);
+    const mins = minutes % 60;
+    if (hours > 0 && mins > 0) {
+      return `${hours}h ${mins}m`;
+    } else if (hours > 0) {
+      return `${hours}h`;
+    } else {
+      return `${mins}m`;
+    }
+  };
+
   const quillModules = {
     toolbar: [
       [{ 'header': [1, 2, 3, false] }],
@@ -389,13 +482,16 @@ const EnhancedTaskModal = ({ task, onClose, onSave, onDelete, project }) => {
     !watchers.some(w => (w.user_id || w.id) === u.id)
   );
 
+  const [dependencyInput, setDependencyInput] = useState('');
+
   return (
     <AnimatePresence>
       <motion.div
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
-        className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4"
+        style={{ zIndex: 1000 }}
+        className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4"
         onClick={onClose}
       >
         <motion.div
@@ -464,6 +560,17 @@ const EnhancedTaskModal = ({ task, onClose, onSave, onDelete, project }) => {
                     Due: {new Date(formData.dueDate).toLocaleDateString()}
                   </span>
                 )}
+                <input
+                  type="text"
+                  placeholder="Estimate (e.g., 2h, 30m)"
+                  value={formData.estimateMinutes ? formatEstimate(formData.estimateMinutes) : ''}
+                  onChange={(e) => {
+                    const minutes = parseEstimate(e.target.value);
+                    setFormData({ ...formData, estimateMinutes: minutes });
+                  }}
+                  className="px-3 py-1 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm text-gray-900 dark:text-white"
+                  style={{ width: '120px' }}
+                />
               </div>
             </div>
             <button
@@ -644,43 +751,40 @@ const EnhancedTaskModal = ({ task, onClose, onSave, onDelete, project }) => {
                   )}
                 </div>
 
-                {/* Comments */}
+                {/* Time Tracking */}
+                {task && (() => {
+                  const user = JSON.parse(localStorage.getItem('user') || '{}');
+                  const currentUserId = user.id || user.user_id;
+                  if (!currentUserId) {
+                    return (
+                      <div className="text-center py-4 text-gray-500 dark:text-gray-400">
+                        Please log in to track time
+                      </div>
+                    );
+                  }
+                  return (
+                    <div>
+                      <TaskTimer
+                        taskId={task.id}
+                        userId={currentUserId}
+                        onTimeUpdate={() => {
+                          // Timer updates handled internally
+                        }}
+                      />
+                      <div className="mt-4">
+                        <TimeLogsList taskId={task.id} userId={currentUserId} />
+                      </div>
+                    </div>
+                  );
+                })()}
+
+                {/* Comments - Threaded */}
                 {task && (
                   <div>
-                    <h3 className="text-lg font-semibold mb-2 text-gray-900 dark:text-white">Comments ({comments.length})</h3>
-                    <div className="space-y-3 max-h-96 overflow-y-auto mb-4">
-                      {comments.map((comment, idx) => (
-                        <div key={comment.id || idx} className="p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
-                          <div className="flex items-center gap-2 mb-2">
-                            {comment.author?.avatar ? (
-                              <img
-                                src={`http://localhost:5001${comment.author.avatar}`}
-                                alt={comment.author.username}
-                                className="w-6 h-6 rounded-full"
-                              />
-                            ) : (
-                              <div className="w-6 h-6 rounded-full bg-primary-500 flex items-center justify-center text-white text-xs">
-                                {(comment.author?.full_name || comment.author?.username || 'U').charAt(0).toUpperCase()}
-                              </div>
-                            )}
-                            <span className="text-sm font-medium text-gray-900 dark:text-white">
-                              {comment.author?.full_name || comment.author?.username || 'User'}
-                            </span>
-                            <span className="text-xs text-gray-500">
-                              {formatDate(comment.created_at)}
-                            </span>
-                          </div>
-                          <div
-                            className="text-sm text-gray-900 dark:text-gray-100"
-                            dangerouslySetInnerHTML={{ __html: comment.content }}
-                          />
-                        </div>
-                      ))}
-                    </div>
-                    <RichTextComment
+                    <ThreadedComments
                       taskId={task.id}
-                      onSave={handleAddComment}
-                      placeholder="Add a comment..."
+                      workspaceMembers={users || []}
+                      currentUserId={JSON.parse(localStorage.getItem('user') || '{}').id}
                     />
                   </div>
                 )}
@@ -931,6 +1035,93 @@ const EnhancedTaskModal = ({ task, onClose, onSave, onDelete, project }) => {
                     </div>
                   ))}
                 </div>
+
+                {/* Dependencies */}
+                {task?.id && (
+                  <div>
+                    <h3 className="text-sm font-semibold mb-2 text-gray-900 dark:text-white">Dependencies</h3>
+                    <div className="space-y-3">
+                      <div>
+                        <div className="text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1">
+                          Waiting on
+                        </div>
+                        {dependencies.waitingOn.length === 0 ? (
+                          <div className="text-xs text-gray-500">No blocking tasks</div>
+                        ) : (
+                          <ul className="space-y-1">
+                            {dependencies.waitingOn.map(dep => (
+                              <li key={dep.id} className="flex items-center justify-between text-xs">
+                                <span className="truncate mr-2">
+                                  {dep.title}{' '}
+                                  {dep.status !== 'done' && (
+                                    <span className="text-red-500">( {dep.status} )</span>
+                                  )}
+                                </span>
+                                <button
+                                  onClick={() => handleRemoveDependency(dep.id)}
+                                  className="text-red-500 hover:text-red-700"
+                                  title="Remove dependency"
+                                >
+                                  ✕
+                                </button>
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                      </div>
+                      <div>
+                        <div className="text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1">
+                          Blocking
+                        </div>
+                        {dependencies.blocking.length === 0 ? (
+                          <div className="text-xs text-gray-500">Not blocking other tasks</div>
+                        ) : (
+                          <ul className="space-y-1">
+                            {dependencies.blocking.map(dep => (
+                              <li key={dep.id} className="flex items-center justify-between text-xs">
+                                <span className="truncate mr-2">
+                                  {dep.title}{' '}
+                                  {dep.status !== 'done' && (
+                                    <span className="text-yellow-500">( {dep.status} )</span>
+                                  )}
+                                </span>
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                      </div>
+                      <div>
+                        <div className="text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1">
+                          Add dependency by Task ID
+                        </div>
+                        <div className="flex gap-2">
+                          <input
+                            type="number"
+                            value={dependencyInput}
+                            onChange={(e) => setDependencyInput(e.target.value)}
+                            placeholder="Task ID"
+                            className="flex-1 px-2 py-1 border border-gray-300 dark:border-gray-600 rounded text-xs bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                          />
+                          <button
+                            onClick={() => {
+                              const id = parseInt(dependencyInput, 10);
+                              if (!isNaN(id)) {
+                                handleAddDependency(id);
+                                setDependencyInput('');
+                              }
+                            }}
+                            className="px-2 py-1 bg-indigo-600 text-white text-xs rounded hover:bg-indigo-700"
+                          >
+                            Add
+                          </button>
+                        </div>
+                        <p className="text-[11px] text-gray-500 mt-1">
+                          Tip: paste a task ID to mark this task as waiting on it.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           </div>

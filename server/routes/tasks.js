@@ -38,59 +38,299 @@ async function logTaskHistory(pool, taskId, userId, action, fieldName = null, ol
   }
 }
 
-// Get all tasks
+// Get all tasks with advanced filtering, pagination, and sorting
 router.get('/', async (req, res) => {
   try {
-    const { projectId, workspaceId, status, priority, search, tag, assignedTo } = req.query;
-    let query = 'SELECT * FROM tasks WHERE 1=1';
+    const {
+      projectId,
+      listId, // New: filter by list_id
+      workspaceId,
+      status, // Can be single or array: status[]=todo&status[]=inprogress
+      priority,
+      search,
+      tag,
+      assignedTo, // Can be single or array: assignedTo[]=1&assignedTo[]=2
+      dueDateFrom,
+      dueDateTo,
+      orderBy = 'created_at',
+      orderDirection = 'DESC',
+      page = 1,
+      perPage = 50,
+      includeAssignees = 'false',
+      includeHistory = 'false'
+    } = req.query;
+
+    // Build base query - simplified to avoid JSON equality operator issues.
+    // Includes a computed blocked_count so the UI can quickly show which tasks are blocked.
+    let query = `
+      SELECT
+        t.*,
+        COALESCE((
+          SELECT COUNT(*)
+          FROM task_dependencies td
+          JOIN tasks bt ON bt.id = td.dependency_task_id
+          WHERE td.task_id = t.id
+            AND bt.status <> 'done'
+        ), 0) AS blocked_count
+      FROM tasks t
+      WHERE 1=1
+    `;
     const params = [];
     let paramIndex = 1;
 
-    if (projectId) {
-      query += ` AND project_id = $${paramIndex}`;
-      params.push(projectId);
-      paramIndex++;
-    }
+    // Workspace filter (required for security)
     if (workspaceId) {
-      query += ` AND workspace_id = $${paramIndex}`;
+      query += ` AND t.workspace_id = $${paramIndex}`;
       params.push(workspaceId);
       paramIndex++;
     }
-    if (status) {
-      query += ` AND status = $${paramIndex}`;
-      params.push(status);
-      paramIndex++;
-    }
-    if (priority) {
-      query += ` AND priority = $${paramIndex}`;
-      params.push(priority);
-      paramIndex++;
-    }
-    if (assignedTo) {
-      query += ` AND assigned_to = $${paramIndex}`;
-      params.push(assignedTo);
-      paramIndex++;
-    }
-    if (search) {
-      query += ` AND (title ILIKE $${paramIndex} OR description ILIKE $${paramIndex})`;
-      params.push(`%${search}%`);
+
+    // Project filter (legacy support)
+    if (projectId) {
+      query += ` AND t.project_id = $${paramIndex}`;
+      params.push(projectId);
       paramIndex++;
     }
 
-    query += ' ORDER BY created_at DESC';
+    // List filter (ClickUp-style hierarchy)
+    if (listId) {
+      query += ` AND t.list_id = $${paramIndex}`;
+      params.push(listId);
+      paramIndex++;
+    }
+
+    // Status filter (supports array)
+    if (status) {
+      const statusArray = Array.isArray(status) ? status : [status];
+      query += ` AND t.status = ANY($${paramIndex})`;
+      params.push(statusArray);
+      paramIndex++;
+    }
+
+    // Priority filter
+    if (priority) {
+      query += ` AND t.priority = $${paramIndex}`;
+      params.push(priority);
+      paramIndex++;
+    }
+
+    // Assignee filter (supports array for multi-assignee)
+    if (assignedTo) {
+      const assigneeArray = Array.isArray(assignedTo) ? assignedTo : [assignedTo];
+      query += ` AND EXISTS (
+        SELECT 1 FROM task_assignees ta
+        WHERE ta.task_id = t.id AND ta.user_id = ANY($${paramIndex})
+      )`;
+      params.push(assigneeArray);
+      paramIndex++;
+    }
+
+    // Date range filters
+    if (dueDateFrom) {
+      query += ` AND t.due_date >= $${paramIndex}`;
+      params.push(dueDateFrom);
+      paramIndex++;
+    }
+    if (dueDateTo) {
+      query += ` AND t.due_date <= $${paramIndex}`;
+      params.push(dueDateTo);
+      paramIndex++;
+    }
+
+    // Search filter (full-text search on title and description)
+    if (search) {
+      query += ` AND (
+        t.title ILIKE $${paramIndex} OR
+        t.description ILIKE $${paramIndex}
+      )`;
+      const searchTerm = `%${search}%`;
+      params.push(searchTerm);
+      paramIndex++;
+      params.push(searchTerm);
+      paramIndex++;
+    }
+
+    // Tag filter
+    if (tag) {
+      query += ` AND EXISTS (
+        SELECT 1 FROM jsonb_array_elements_text(t.tags) tag
+        WHERE tag ILIKE $${paramIndex}
+      )`;
+      params.push(`%${tag}%`);
+      paramIndex++;
+    }
+
+    // Validate orderBy to prevent SQL injection
+    const allowedOrderBy = ['created_at', 'updated_at', 'due_date', 'title', 'priority', 'status', 'position'];
+    const safeOrderBy = allowedOrderBy.includes(orderBy) ? orderBy : 'created_at';
+    const safeOrderDirection = orderDirection.toUpperCase() === 'ASC' ? 'ASC' : 'DESC';
+
+    // Ordering
+    query += ` ORDER BY t.${safeOrderBy} ${safeOrderDirection}`;
+
+    // Pagination
+    const pageNum = parseInt(page, 10) || 1;
+    const perPageNum = Math.min(parseInt(perPage, 10) || 50, 100); // Max 100 per page
+    const offset = (pageNum - 1) * perPageNum;
+    
+    query += ` LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`;
+    params.push(perPageNum, offset);
+
+    // Execute query
     const { rows } = await req.app.locals.pool.query(query, params);
     
-    // Filter by tag if provided
-    let filteredRows = rows;
-    if (tag) {
-      filteredRows = rows.filter(task => {
-        const tags = Array.isArray(task.tags) ? task.tags : (task.tags ? JSON.parse(task.tags) : []);
-        return tags.some(t => t.toLowerCase().includes(tag.toLowerCase()));
+    // Load assignees separately if needed (to avoid JSON equality operator issues)
+    if (includeAssignees === 'true' && rows.length > 0) {
+      const taskIds = rows.map(t => t.id);
+      const assigneesResult = await req.app.locals.pool.query(
+        `SELECT ta.task_id, u.id, u.username, u.full_name, u.avatar
+         FROM task_assignees ta
+         JOIN users u ON ta.user_id = u.id
+         WHERE ta.task_id = ANY($1)
+         ORDER BY ta.task_id, ta.assigned_at`,
+        [taskIds]
+      );
+      
+      // Group assignees by task_id
+      const assigneesByTask = {};
+      assigneesResult.rows.forEach(a => {
+        if (!assigneesByTask[a.task_id]) {
+          assigneesByTask[a.task_id] = [];
+        }
+        assigneesByTask[a.task_id].push({
+          id: a.id,
+          username: a.username,
+          full_name: a.full_name,
+          avatar: a.avatar
+        });
+      });
+
+      // Attach assignees to tasks
+      rows.forEach(task => {
+        task.assignees = assigneesByTask[task.id] || [];
+      });
+    } else {
+      // Set empty array for assignees
+      rows.forEach(task => {
+        task.assignees = [];
       });
     }
-    
-    res.json(filteredRows);
+
+    // Get total count for pagination metadata
+    let countQuery = 'SELECT COUNT(DISTINCT t.id) as total FROM tasks t WHERE 1=1';
+    const countParams = [];
+    let countParamIndex = 1;
+
+    // Apply same filters for count
+    if (workspaceId) {
+      countQuery += ` AND t.workspace_id = $${countParamIndex}`;
+      countParams.push(workspaceId);
+      countParamIndex++;
+    }
+    if (projectId) {
+      countQuery += ` AND t.project_id = $${countParamIndex}`;
+      countParams.push(projectId);
+      countParamIndex++;
+    }
+    if (listId) {
+      countQuery += ` AND t.list_id = $${countParamIndex}`;
+      countParams.push(listId);
+      countParamIndex++;
+    }
+    if (status) {
+      const statusArray = Array.isArray(status) ? status : [status];
+      countQuery += ` AND t.status = ANY($${countParamIndex})`;
+      countParams.push(statusArray);
+      countParamIndex++;
+    }
+    if (priority) {
+      countQuery += ` AND t.priority = $${countParamIndex}`;
+      countParams.push(priority);
+      countParamIndex++;
+    }
+    if (assignedTo) {
+      const assigneeArray = Array.isArray(assignedTo) ? assignedTo : [assignedTo];
+      countQuery += ` AND EXISTS (
+        SELECT 1 FROM task_assignees ta
+        WHERE ta.task_id = t.id AND ta.user_id = ANY($${countParamIndex})
+      )`;
+      countParams.push(assigneeArray);
+      countParamIndex++;
+    }
+    if (dueDateFrom) {
+      countQuery += ` AND t.due_date >= $${countParamIndex}`;
+      countParams.push(dueDateFrom);
+      countParamIndex++;
+    }
+    if (dueDateTo) {
+      countQuery += ` AND t.due_date <= $${countParamIndex}`;
+      countParams.push(dueDateTo);
+      countParamIndex++;
+    }
+    if (search) {
+      countQuery += ` AND (
+        t.title ILIKE $${countParamIndex} OR
+        t.description ILIKE $${countParamIndex}
+      )`;
+      countParams.push(`%${search}%`);
+      countParamIndex++;
+    }
+    if (tag) {
+      countQuery += ` AND EXISTS (
+        SELECT 1 FROM jsonb_array_elements_text(t.tags) tag
+        WHERE tag ILIKE $${countParamIndex}
+      )`;
+      countParams.push(`%${tag}%`);
+      countParamIndex++;
+    }
+
+    const countResult = await req.app.locals.pool.query(countQuery, countParams);
+    const total = parseInt(countResult.rows[0].total, 10);
+
+    // Load history if requested
+    if (includeHistory === 'true' && rows.length > 0) {
+      const taskIds = rows.map(t => t.id);
+      const historyResult = await req.app.locals.pool.query(
+        `SELECT th.*, u.username, u.full_name, u.avatar
+         FROM task_history th
+         LEFT JOIN users u ON th.user_id = u.id
+         WHERE th.task_id = ANY($1)
+         ORDER BY th.created_at DESC`,
+        [taskIds]
+      );
+      
+      // Group history by task_id
+      const historyByTask = {};
+      historyResult.rows.forEach(h => {
+        if (!historyByTask[h.task_id]) {
+          historyByTask[h.task_id] = [];
+        }
+        historyByTask[h.task_id].push(h);
+      });
+
+      // Attach history to tasks
+      rows.forEach(task => {
+        task.history = historyByTask[task.id] || [];
+      });
+    } else {
+      // Set empty array for history
+      rows.forEach(task => {
+        task.history = [];
+      });
+    }
+
+    // Response with pagination metadata
+    res.json({
+      data: rows,
+      pagination: {
+        page: pageNum,
+        perPage: perPageNum,
+        total,
+        totalPages: Math.ceil(total / perPageNum)
+      }
+    });
   } catch (error) {
+    console.error('Error fetching tasks:', error);
     res.status(500).json({ message: error.message });
   }
 });
@@ -132,16 +372,22 @@ router.get('/:id', async (req, res) => {
 // Create task
 router.post('/', async (req, res) => {
   try {
-    const { title, description, project, workspace, assignedTo, status, priority, dueDate, createdBy, subtasks, tags, reminders, customFields, assignees } = req.body;
+    const { title, description, project, listId, workspace, assignedTo, status, priority, dueDate, createdBy, subtasks, tags, reminders, customFields, assignees } = req.body;
+    
+    // If listId is provided, use it; otherwise fall back to project (legacy support)
+    const finalListId = listId || project;
+    
+    const { estimateMinutes } = req.body;
     const { rows } = await req.app.locals.pool.query(
-      `INSERT INTO tasks (title, description, project_id, workspace_id, assigned_to, status, priority, due_date, created_by, subtasks, tags, custom_fields)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) RETURNING *`,
+      `INSERT INTO tasks (title, description, project_id, list_id, workspace_id, assigned_to, status, priority, due_date, created_by, subtasks, tags, custom_fields, estimate_minutes)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14) RETURNING *`,
       [
-        title, description, project, workspace, assignedTo, 
+        title, description, project || null, finalListId || null, workspace, assignedTo, 
         status || 'todo', priority || 'medium', dueDate, createdBy, 
         JSON.stringify(subtasks || []), 
         JSON.stringify(tags || []),
-        JSON.stringify(customFields || [])
+        JSON.stringify(customFields || []),
+        estimateMinutes || null
       ]
     );
     
@@ -177,8 +423,10 @@ router.post('/', async (req, res) => {
       req.app.locals.automationEngine.executeAutomations('task_created', {
         taskId: task.id,
         workspaceId: workspace,
+        listId: finalListId,
         projectId: project,
         status: task.status,
+        priority: task.priority,
         createdBy
       });
     }
@@ -189,7 +437,159 @@ router.post('/', async (req, res) => {
   }
 });
 
-// Update task (requires edit permission)
+// PATCH endpoint for partial updates with optimistic concurrency
+router.patch('/:id', async (req, res) => {
+  try {
+    const taskId = req.params.id;
+    const { userId, version, updatedAt } = req.body;
+
+    if (!userId) {
+      return res.status(403).json({ message: 'Authentication required' });
+    }
+
+    // Get current task
+    const currentTaskResult = await req.app.locals.pool.query(
+      'SELECT *, version, updated_at FROM tasks WHERE id = $1',
+      [taskId]
+    );
+
+    if (currentTaskResult.rows.length === 0) {
+      return res.status(404).json({ message: 'Task not found' });
+    }
+
+    const currentTask = currentTaskResult.rows[0];
+
+    // Optimistic concurrency check
+    if (version !== undefined && currentTask.version !== version) {
+      return res.status(409).json({
+        message: 'Task was modified by another user. Please refresh and try again.',
+        conflict: {
+          currentVersion: currentTask.version,
+          providedVersion: version,
+          currentTask: currentTask
+        }
+      });
+    }
+
+    // Check updatedAt if version not provided
+    if (updatedAt && new Date(currentTask.updated_at) > new Date(updatedAt)) {
+      return res.status(409).json({
+        message: 'Task was modified by another user. Please refresh and try again.',
+        conflict: {
+          currentUpdatedAt: currentTask.updated_at,
+          providedUpdatedAt: updatedAt,
+          currentTask: currentTask
+        }
+      });
+    }
+
+    // If status is being moved to "done", ensure there are no open blocking dependencies.
+    // NOTE: This is a lightweight ClickUp-style check. In the future, this can be
+    // extended to use workspace-specific "done" status types.
+    if (req.body.status && req.body.status === 'done' && currentTask.status !== 'done') {
+      const blockersResult = await req.app.locals.pool.query(
+        `SELECT bt.id, bt.title, bt.status
+         FROM task_dependencies td
+         JOIN tasks bt ON bt.id = td.dependency_task_id
+         WHERE td.task_id = $1 AND bt.status <> 'done'`,
+        [taskId]
+      );
+
+      if (blockersResult.rows.length > 0) {
+        return res.status(409).json({
+          message: 'This task is blocked by other tasks. Complete them first or remove the dependency.',
+          blockers: blockersResult.rows
+        });
+      }
+    }
+
+    // Build update query dynamically (only update provided fields)
+    const updates = [];
+    const values = [];
+    let paramIndex = 1;
+
+    const fieldsToUpdate = ['title', 'description', 'status', 'priority', 'due_date', 'position', 'parent_task_id', 'subtask_level', 'estimate_minutes'];
+    
+    fieldsToUpdate.forEach(field => {
+      const dbField = field === 'dueDate' ? 'due_date' : (field === 'estimateMinutes' ? 'estimate_minutes' : field);
+      const bodyField = field === 'estimate_minutes' ? 'estimateMinutes' : field;
+      if (req.body[bodyField] !== undefined && req.body[bodyField] !== currentTask[dbField]) {
+        updates.push(`${dbField} = $${paramIndex}`);
+        values.push(req.body[bodyField]);
+        paramIndex++;
+        
+        // Log history
+        if (userId && currentTask[dbField] !== req.body[bodyField]) {
+          logTaskHistory(req.app.locals.pool, taskId, userId, 'updated', field, 
+            currentTask[dbField]?.toString(), req.body[bodyField]?.toString());
+        }
+      }
+    });
+
+    // Handle JSONB fields
+    if (req.body.subtasks !== undefined) {
+      updates.push(`subtasks = $${paramIndex}`);
+      values.push(JSON.stringify(req.body.subtasks));
+      paramIndex++;
+      if (userId) {
+        logTaskHistory(req.app.locals.pool, taskId, userId, 'updated', 'subtasks', 
+          currentTask.subtasks, req.body.subtasks);
+      }
+    }
+    if (req.body.tags !== undefined) {
+      updates.push(`tags = $${paramIndex}`);
+      values.push(JSON.stringify(req.body.tags));
+      paramIndex++;
+      if (userId) {
+        logTaskHistory(req.app.locals.pool, taskId, userId, 'updated', 'tags', 
+          currentTask.tags, req.body.tags);
+      }
+    }
+    if (req.body.customFields !== undefined) {
+      updates.push(`custom_fields = $${paramIndex}`);
+      values.push(JSON.stringify(req.body.customFields));
+      paramIndex++;
+    }
+
+    if (updates.length === 0) {
+      const { rows } = await req.app.locals.pool.query('SELECT * FROM tasks WHERE id = $1', [taskId]);
+      return res.json(rows[0]);
+    }
+
+    // Increment version and update timestamp
+    updates.push(`version = COALESCE(version, 1) + 1`);
+    updates.push(`updated_at = CURRENT_TIMESTAMP`);
+    values.push(taskId);
+
+    const query = `UPDATE tasks SET ${updates.join(', ')} WHERE id = $${paramIndex} RETURNING *`;
+    const { rows } = await req.app.locals.pool.query(query, values);
+
+    const updatedTask = rows[0];
+
+    // Emit real-time update
+    if (req.app.locals.io) {
+      req.app.locals.io.to(`task-${taskId}`).emit('task-updated', {
+        taskId,
+        task: updatedTask,
+        updatedBy: userId
+      });
+      if (updatedTask.workspace_id) {
+        req.app.locals.io.to(`workspace-${updatedTask.workspace_id}`).emit('task-updated', {
+          taskId,
+          task: updatedTask,
+          updatedBy: userId
+        });
+      }
+    }
+
+    res.json(updatedTask);
+  } catch (error) {
+    console.error('Error updating task:', error);
+    res.status(400).json({ message: error.message });
+  }
+});
+
+// Update task (requires edit permission) - Full update
 router.put('/:id', async (req, res) => {
   try {
     const { title, description, status, priority, dueDate, assignedTo, subtasks, tags, userId } = req.body;
@@ -280,6 +680,7 @@ router.put('/:id', async (req, res) => {
       return res.json(rows[0]);
     }
     
+    updates.push(`version = COALESCE(version, 1) + 1`);
     updates.push(`updated_at = CURRENT_TIMESTAMP`);
     values.push(taskId);
     
@@ -310,9 +711,11 @@ router.put('/:id', async (req, res) => {
       req.app.locals.automationEngine.executeAutomations('status_changed', {
         taskId,
         workspaceId: oldTask.workspace_id,
+        listId: oldTask.list_id,
         projectId: oldTask.project_id,
         oldStatus: oldTask.status,
         newStatus: status,
+        status: status, // For condition matching
         updatedBy: userId
       });
     }
@@ -454,18 +857,238 @@ router.get('/:id/history', async (req, res) => {
   }
 });
 
-// Bulk update tasks (for kanban drag-drop)
+// ---- Task Dependencies ----------------------------------------------------
+
+// Get dependencies for a task (waiting-on and blocking)
+router.get('/:id/dependencies', async (req, res) => {
+  try {
+    const taskId = parseInt(req.params.id, 10);
+
+    // Tasks this task is waiting on (blockers)
+    const waitingOnResult = await req.app.locals.pool.query(
+      `SELECT bt.*
+       FROM task_dependencies td
+       JOIN tasks bt ON bt.id = td.dependency_task_id
+       WHERE td.task_id = $1
+       ORDER BY bt.created_at DESC`,
+      [taskId]
+    );
+
+    // Tasks this task is blocking
+    const blockingResult = await req.app.locals.pool.query(
+      `SELECT t.*
+       FROM task_dependencies td
+       JOIN tasks t ON t.id = td.task_id
+       WHERE td.dependency_task_id = $1
+       ORDER BY t.created_at DESC`,
+      [taskId]
+    );
+
+    res.json({
+      waitingOn: waitingOnResult.rows,
+      blocking: blockingResult.rows
+    });
+  } catch (error) {
+    console.error('Error fetching task dependencies:', error);
+    res.status(500).json({ message: error.message });
+  }
+});
+
+// Add a dependency: current task (id) waits on dependencyTaskId
+router.post('/:id/dependencies', async (req, res) => {
+  try {
+    const taskId = parseInt(req.params.id, 10);
+    const { dependencyTaskId, userId } = req.body;
+
+    if (!dependencyTaskId) {
+      return res.status(400).json({ message: 'dependencyTaskId is required' });
+    }
+
+    if (taskId === dependencyTaskId) {
+      return res.status(400).json({ message: 'A task cannot depend on itself' });
+    }
+
+    // Prevent duplicate relationships
+    const existing = await req.app.locals.pool.query(
+      'SELECT id FROM task_dependencies WHERE task_id = $1 AND dependency_task_id = $2',
+      [taskId, dependencyTaskId]
+    );
+    if (existing.rows.length > 0) {
+      return res.status(200).json({ message: 'Dependency already exists' });
+    }
+
+    const result = await req.app.locals.pool.query(
+      'INSERT INTO task_dependencies (task_id, dependency_task_id) VALUES ($1, $2) RETURNING *',
+      [taskId, dependencyTaskId]
+    );
+
+    // Log in history that a dependency was added
+    if (userId) {
+      await logTaskHistory(
+        req.app.locals.pool,
+        taskId,
+        userId,
+        'added_dependency',
+        'dependency',
+        null,
+        dependencyTaskId.toString()
+      );
+    }
+
+    res.status(201).json(result.rows[0]);
+  } catch (error) {
+    console.error('Error adding dependency:', error);
+    res.status(400).json({ message: error.message });
+  }
+});
+
+// Remove a dependency (by dependencyTaskId)
+router.delete('/:id/dependencies/:dependencyTaskId', async (req, res) => {
+  try {
+    const taskId = parseInt(req.params.id, 10);
+    const dependencyTaskId = parseInt(req.params.dependencyTaskId, 10);
+    const { userId } = req.body;
+
+    await req.app.locals.pool.query(
+      'DELETE FROM task_dependencies WHERE task_id = $1 AND dependency_task_id = $2',
+      [taskId, dependencyTaskId]
+    );
+
+    if (userId) {
+      await logTaskHistory(
+        req.app.locals.pool,
+        taskId,
+        userId,
+        'removed_dependency',
+        'dependency',
+        dependencyTaskId.toString(),
+        null
+      );
+    }
+
+    res.json({ message: 'Dependency removed' });
+  } catch (error) {
+    console.error('Error removing dependency:', error);
+    res.status(400).json({ message: error.message });
+  }
+});
+
+// Bulk update tasks with advanced operations
+router.patch('/bulk', async (req, res) => {
+  try {
+    const { taskIds, updates, userId } = req.body;
+
+    if (!taskIds || !Array.isArray(taskIds) || taskIds.length === 0) {
+      return res.status(400).json({ message: 'taskIds array is required' });
+    }
+
+    if (!updates || typeof updates !== 'object') {
+      return res.status(400).json({ message: 'updates object is required' });
+    }
+
+    if (!userId) {
+      return res.status(403).json({ message: 'Authentication required' });
+    }
+
+    const client = await req.app.locals.pool.connect();
+    try {
+      await client.query('BEGIN');
+
+      const updateFields = [];
+      const updateValues = [];
+      let paramIndex = 1;
+
+      // Build update SET clause
+      const allowedFields = ['status', 'priority', 'due_date', 'assigned_to'];
+      Object.keys(updates).forEach(field => {
+        if (allowedFields.includes(field)) {
+          updateFields.push(`${field} = $${paramIndex}`);
+          updateValues.push(updates[field]);
+          paramIndex++;
+        }
+      });
+
+      if (updateFields.length === 0) {
+        await client.query('ROLLBACK');
+        return res.status(400).json({ message: 'No valid fields to update' });
+      }
+
+      // Always update timestamp and version
+      updateFields.push(`updated_at = CURRENT_TIMESTAMP`);
+      updateFields.push(`version = COALESCE(version, 1) + 1`);
+
+      // Build WHERE clause for task IDs
+      updateValues.push(taskIds);
+      const whereClause = `id = ANY($${paramIndex})`;
+
+      const updateQuery = `
+        UPDATE tasks 
+        SET ${updateFields.join(', ')} 
+        WHERE ${whereClause}
+        RETURNING id, title, status, priority, updated_at, version
+      `;
+
+      const result = await client.query(updateQuery, updateValues);
+      const updatedTasks = result.rows;
+
+      // Log history for each updated task
+      for (const taskId of taskIds) {
+        const task = updatedTasks.find(t => t.id === taskId);
+        if (task) {
+          Object.keys(updates).forEach(field => {
+            if (allowedFields.includes(field)) {
+              logTaskHistory(req.app.locals.pool, taskId, userId, 'bulk_updated', field, null, updates[field]?.toString());
+            }
+          });
+        }
+      }
+
+      await client.query('COMMIT');
+
+      // Emit real-time updates
+      if (req.app.locals.io) {
+        updatedTasks.forEach(task => {
+          req.app.locals.io.to(`task-${task.id}`).emit('task-updated', {
+            taskId: task.id,
+            task,
+            updatedBy: userId,
+            bulkUpdate: true
+          });
+        });
+      }
+
+      res.json({
+        message: `${updatedTasks.length} tasks updated`,
+        updated: updatedTasks.length,
+        tasks: updatedTasks
+      });
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
+    }
+  } catch (error) {
+    console.error('Error in bulk update:', error);
+    res.status(500).json({ message: error.message });
+  }
+});
+
+// Legacy bulk update endpoint (for backward compatibility)
 router.put('/bulk/update', async (req, res) => {
   try {
-    const { tasks } = req.body;
+    const { tasks, userId } = req.body;
     const client = await req.app.locals.pool.connect();
     try {
       await client.query('BEGIN');
       for (const task of tasks) {
         await client.query(
-          'UPDATE tasks SET status = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2',
+          'UPDATE tasks SET status = $1, updated_at = CURRENT_TIMESTAMP, version = COALESCE(version, 1) + 1 WHERE id = $2',
           [task.status, task.id]
         );
+        if (userId && task.status) {
+          logTaskHistory(req.app.locals.pool, task.id, userId, 'bulk_updated', 'status', null, task.status);
+        }
       }
       await client.query('COMMIT');
       res.json({ message: 'Tasks updated' });
@@ -649,6 +1272,302 @@ router.delete('/:id/checklists/:checklistId', async (req, res) => {
     res.json({ message: 'Checklist deleted' });
   } catch (error) {
     res.status(500).json({ message: error.message });
+  }
+});
+
+// ========== TIME TRACKING ROUTES ==========
+
+// Get time logs for a task
+router.get('/:id/time-logs', async (req, res) => {
+  try {
+    const { rows } = await req.app.locals.pool.query(
+      `SELECT tl.*, u.username, u.full_name, u.avatar
+       FROM time_logs tl
+       LEFT JOIN users u ON tl.user_id = u.id
+       WHERE tl.task_id = $1
+       ORDER BY tl.start_time DESC`,
+      [req.params.id]
+    );
+    
+    const logs = rows.map(row => ({
+      ...row,
+      user: {
+        id: row.user_id,
+        username: row.username,
+        full_name: row.full_name,
+        avatar: row.avatar
+      }
+    }));
+    
+    res.json(logs);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+// Add time log to a task
+router.post('/:id/time-logs', async (req, res) => {
+  try {
+    const { userId, duration, startTime, endTime, description, billable } = req.body;
+    const taskId = parseInt(req.params.id);
+    
+    if (!userId) {
+      return res.status(400).json({ message: 'User ID is required' });
+    }
+    
+    if (!duration || duration <= 0) {
+      return res.status(400).json({ message: 'Duration must be greater than 0' });
+    }
+    
+    if (!taskId || isNaN(taskId)) {
+      return res.status(400).json({ message: 'Invalid task ID' });
+    }
+    
+    // Verify task exists
+    const taskCheck = await req.app.locals.pool.query(
+      'SELECT id FROM tasks WHERE id = $1',
+      [taskId]
+    );
+    
+    if (taskCheck.rows.length === 0) {
+      return res.status(404).json({ message: 'Task not found' });
+    }
+    
+    const { rows } = await req.app.locals.pool.query(
+      `INSERT INTO time_logs (task_id, user_id, duration, start_time, end_time, description, billable)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)
+       RETURNING *`,
+      [
+        taskId,
+        parseInt(userId),
+        parseInt(duration),
+        startTime || null,
+        endTime || null,
+        description || null,
+        billable || false
+      ]
+    );
+    
+    // Log activity
+    await logTaskHistory(req.app.locals.pool, taskId, parseInt(userId), 'time_logged', 'time_log', null, {
+      duration,
+      startTime,
+      endTime
+    });
+    
+    res.status(201).json(rows[0]);
+  } catch (error) {
+    console.error('Error adding time log:', error);
+    res.status(400).json({ message: error.message || 'Failed to add time log' });
+  }
+});
+
+// Update time log
+router.patch('/:id/time-logs/:logId', async (req, res) => {
+  try {
+    const { duration, startTime, endTime, description, billable } = req.body;
+    const updates = [];
+    const values = [];
+    let paramIndex = 1;
+    
+    if (duration !== undefined) {
+      updates.push(`duration = $${paramIndex++}`);
+      values.push(duration);
+    }
+    if (startTime !== undefined) {
+      updates.push(`start_time = $${paramIndex++}`);
+      values.push(startTime);
+    }
+    if (endTime !== undefined) {
+      updates.push(`end_time = $${paramIndex++}`);
+      values.push(endTime);
+    }
+    if (description !== undefined) {
+      updates.push(`description = $${paramIndex++}`);
+      values.push(description);
+    }
+    if (billable !== undefined) {
+      updates.push(`billable = $${paramIndex++}`);
+      values.push(billable);
+    }
+    
+    if (updates.length === 0) {
+      return res.status(400).json({ message: 'No fields to update' });
+    }
+    
+    updates.push(`updated_at = CURRENT_TIMESTAMP`);
+    values.push(req.params.logId);
+    values.push(req.params.id);
+    
+    const { rows } = await req.app.locals.pool.query(
+      `UPDATE time_logs SET ${updates.join(', ')} WHERE id = $${paramIndex} AND task_id = $${paramIndex + 1} RETURNING *`,
+      values
+    );
+    
+    if (rows.length === 0) {
+      return res.status(404).json({ message: 'Time log not found' });
+    }
+    
+    res.json(rows[0]);
+  } catch (error) {
+    res.status(400).json({ message: error.message });
+  }
+});
+
+// Delete time log
+router.delete('/:id/time-logs/:logId', async (req, res) => {
+  try {
+    const { rowCount } = await req.app.locals.pool.query(
+      'DELETE FROM time_logs WHERE id = $1 AND task_id = $2',
+      [req.params.logId, req.params.id]
+    );
+    
+    if (rowCount === 0) {
+      return res.status(404).json({ message: 'Time log not found' });
+    }
+    
+    res.json({ message: 'Time log deleted successfully' });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+// Get timer status for a task (check if user has active timer)
+router.get('/:id/timer/status', async (req, res) => {
+  try {
+    const { userId } = req.query;
+    if (!userId) {
+      return res.status(400).json({ message: 'User ID is required' });
+    }
+    
+    // Check for active timer (end_time is null and start_time exists)
+    const { rows } = await req.app.locals.pool.query(
+      `SELECT * FROM time_logs
+       WHERE task_id = $1 AND user_id = $2 AND end_time IS NULL AND start_time IS NOT NULL
+       ORDER BY start_time DESC
+       LIMIT 1`,
+      [req.params.id, userId]
+    );
+    
+    if (rows.length === 0) {
+      return res.json({ active: false });
+    }
+    
+    const timer = rows[0];
+    const elapsed = Math.floor((new Date() - new Date(timer.start_time)) / 1000);
+    
+    res.json({
+      active: true,
+      startTime: timer.start_time,
+      elapsed,
+      logId: timer.id
+    });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+// Start timer for a task
+router.post('/:id/timer/start', async (req, res) => {
+  try {
+    const { userId, description } = req.body;
+    const taskId = parseInt(req.params.id);
+    
+    if (!userId) {
+      return res.status(400).json({ message: 'User ID is required' });
+    }
+    
+    if (!taskId || isNaN(taskId)) {
+      return res.status(400).json({ message: 'Invalid task ID' });
+    }
+    
+    // Verify task exists
+    const taskCheck = await req.app.locals.pool.query(
+      'SELECT id FROM tasks WHERE id = $1',
+      [taskId]
+    );
+    
+    if (taskCheck.rows.length === 0) {
+      return res.status(404).json({ message: 'Task not found' });
+    }
+    
+    // Check if user already has an active timer on this task
+    const existingTimer = await req.app.locals.pool.query(
+      `SELECT id FROM time_logs
+       WHERE task_id = $1 AND user_id = $2 AND end_time IS NULL AND start_time IS NOT NULL`,
+      [taskId, parseInt(userId)]
+    );
+    
+    if (existingTimer.rows.length > 0) {
+      return res.status(400).json({ message: 'Timer already running for this task' });
+    }
+    
+    // Create new time log entry with start_time but no end_time
+    const { rows } = await req.app.locals.pool.query(
+      `INSERT INTO time_logs (task_id, user_id, start_time, description, duration)
+       VALUES ($1, $2, CURRENT_TIMESTAMP, $3, 0)
+       RETURNING *`,
+      [taskId, parseInt(userId), description || null]
+    );
+    
+    // Log activity
+    await logTaskHistory(req.app.locals.pool, taskId, parseInt(userId), 'timer_started', 'timer', null, {
+      startTime: rows[0].start_time
+    });
+    
+    res.status(201).json(rows[0]);
+  } catch (error) {
+    console.error('Error starting timer:', error);
+    res.status(400).json({ message: error.message || 'Failed to start timer' });
+  }
+});
+
+// Stop timer for a task
+router.post('/:id/timer/stop', async (req, res) => {
+  try {
+    const { userId } = req.body;
+    
+    if (!userId) {
+      return res.status(400).json({ message: 'User ID is required' });
+    }
+    
+    // Find active timer
+    const { rows } = await req.app.locals.pool.query(
+      `SELECT * FROM time_logs
+       WHERE task_id = $1 AND user_id = $2 AND end_time IS NULL AND start_time IS NOT NULL
+       ORDER BY start_time DESC
+       LIMIT 1`,
+      [req.params.id, userId]
+    );
+    
+    if (rows.length === 0) {
+      return res.status(404).json({ message: 'No active timer found' });
+    }
+    
+    const timer = rows[0];
+    const endTime = new Date();
+    const startTime = new Date(timer.start_time);
+    const duration = Math.floor((endTime - startTime) / 1000); // Duration in seconds
+    
+    // Update time log with end_time and duration
+    const { rows: updatedRows } = await req.app.locals.pool.query(
+      `UPDATE time_logs
+       SET end_time = $1, duration = $2, updated_at = CURRENT_TIMESTAMP
+       WHERE id = $3
+       RETURNING *`,
+      [endTime, duration, timer.id]
+    );
+    
+    // Log activity
+    await logTaskHistory(req.app.locals.pool, req.params.id, userId, 'timer_stopped', 'timer', null, {
+      duration,
+      startTime: timer.start_time,
+      endTime
+    });
+    
+    res.json(updatedRows[0]);
+  } catch (error) {
+    res.status(400).json({ message: error.message });
   }
 });
 

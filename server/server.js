@@ -121,6 +121,34 @@ async function createTables() {
       ALTER TABLE projects
       ADD COLUMN IF NOT EXISTS folder_id INTEGER REFERENCES folders(id) ON DELETE SET NULL
     `);
+
+    // Lists table (ClickUp-style hierarchy: Workspace → Space → Folder → List → Tasks)
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS lists (
+        id SERIAL PRIMARY KEY,
+        name VARCHAR(255) NOT NULL,
+        description TEXT,
+        workspace_id INTEGER REFERENCES workspaces(id) ON DELETE CASCADE,
+        space_id INTEGER REFERENCES spaces(id) ON DELETE SET NULL,
+        folder_id INTEGER REFERENCES folders(id) ON DELETE SET NULL,
+        color VARCHAR(50) DEFAULT '#4a9eff',
+        owner INTEGER REFERENCES users(id),
+        position INTEGER DEFAULT 0,
+        task_count INTEGER DEFAULT 0,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    // Add list_id to tasks if it doesn't exist
+    await client.query(`
+      DO $$ 
+      BEGIN
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='tasks' AND column_name='list_id') THEN
+          ALTER TABLE tasks ADD COLUMN list_id INTEGER REFERENCES lists(id) ON DELETE SET NULL;
+        END IF;
+      END $$;
+    `);
     
     await client.query(`
       CREATE TABLE IF NOT EXISTS integrations (
@@ -318,6 +346,7 @@ async function createTables() {
       CREATE TABLE IF NOT EXISTS notifications (
         id SERIAL PRIMARY KEY,
         user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+        from_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
         type VARCHAR(50) NOT NULL,
         message TEXT NOT NULL,
         related_id INTEGER,
@@ -326,7 +355,31 @@ async function createTables() {
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
     `);
+    
+    // Add from_user_id column if it doesn't exist
+    await client.query(`
+      DO $$ 
+      BEGIN
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='notifications' AND column_name='from_user_id') THEN
+          ALTER TABLE notifications ADD COLUMN from_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL;
+        END IF;
+      END $$;
+    `);
 
+    // Docs/Pages table
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS docs (
+        id SERIAL PRIMARY KEY,
+        title VARCHAR(255) NOT NULL,
+        content TEXT,
+        workspace_id INTEGER REFERENCES workspaces(id) ON DELETE CASCADE,
+        space_id INTEGER REFERENCES spaces(id) ON DELETE CASCADE,
+        created_by INTEGER REFERENCES users(id),
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+    
     // Shareable links table
     await client.query(`
       CREATE TABLE IF NOT EXISTS shareable_links (
@@ -368,6 +421,92 @@ async function createTables() {
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
     `);
+
+    // Time tracking table
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS time_logs (
+        id SERIAL PRIMARY KEY,
+        task_id INTEGER REFERENCES tasks(id) ON DELETE CASCADE,
+        user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+        duration INTEGER NOT NULL,
+        start_time TIMESTAMP,
+        end_time TIMESTAMP,
+        description TEXT,
+        billable BOOLEAN DEFAULT FALSE,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    // Dashboard widget preferences
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS dashboard_widgets (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+        workspace_id INTEGER REFERENCES workspaces(id) ON DELETE CASCADE,
+        widget_type VARCHAR(50) NOT NULL,
+        widget_config JSONB DEFAULT '{}',
+        position INTEGER DEFAULT 0,
+        visible BOOLEAN DEFAULT TRUE,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(user_id, workspace_id, widget_type)
+      )
+    `);
+
+    // Sprint tracking
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS sprints (
+        id SERIAL PRIMARY KEY,
+        workspace_id INTEGER REFERENCES workspaces(id) ON DELETE CASCADE,
+        list_id INTEGER REFERENCES lists(id) ON DELETE SET NULL,
+        name VARCHAR(255) NOT NULL,
+        start_date DATE NOT NULL,
+        end_date DATE NOT NULL,
+        goal TEXT,
+        created_by INTEGER REFERENCES users(id),
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    // Create indexes for reporting
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_time_logs_task_id ON time_logs(task_id)`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_time_logs_user_id ON time_logs(user_id)`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_time_logs_start_time ON time_logs(start_time)`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_dashboard_widgets_user_workspace ON dashboard_widgets(user_id, workspace_id)`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_sprints_workspace_id ON sprints(workspace_id)`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_sprints_dates ON sprints(start_date, end_date)`);
+
+    // Add estimate_minutes to tasks if not exists
+    await client.query(`
+      DO $$
+      BEGIN
+          IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='tasks' AND column_name='estimate_minutes') THEN
+              ALTER TABLE tasks ADD COLUMN estimate_minutes INTEGER;
+          END IF;
+      END $$;
+    `);
+
+    // Saved searches table
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS saved_searches (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+        workspace_id INTEGER REFERENCES workspaces(id) ON DELETE CASCADE,
+        name VARCHAR(255) NOT NULL,
+        query_text TEXT,
+        filter_config JSONB DEFAULT '{}',
+        scope VARCHAR(50) DEFAULT 'workspace',
+        scope_id INTEGER,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_saved_searches_user_id ON saved_searches(user_id)`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_saved_searches_workspace_id ON saved_searches(workspace_id)`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_saved_searches_scope ON saved_searches(scope, scope_id)`);
     
     console.log('Database tables created or already exist');
   } catch (error) {
@@ -392,8 +531,17 @@ app.use('/api/workspace-chat', require('./routes/workspaceChat'));
 app.use('/api/sharing', require('./routes/sharing'));
 app.use('/api/spaces', require('./routes/spaces'));
 app.use('/api/folders', require('./routes/folders'));
+app.use('/api/lists', require('./routes/lists'));
 app.use('/api/integrations', require('./routes/integrations'));
 app.use('/api/automations', require('./routes/automations'));
+app.use('/api/notifications', require('./routes/notifications'));
+app.use('/api/docs', require('./routes/docs'));
+app.use('/api/time-logs', require('./routes/timeLogs'));
+app.use('/api/reports', require('./routes/reports'));
+app.use('/api/dashboard-widgets', require('./routes/dashboardWidgets'));
+app.use('/api/search', require('./routes/search'));
+app.use('/api/saved-searches', require('./routes/savedSearches'));
+app.use('/api/activity', require('./routes/activity'));
 
 // Initialize Automation Engine
 const AutomationEngine = require('./services/automationEngine');
@@ -452,14 +600,14 @@ app.locals.io = io;
 automationEngine = new AutomationEngine(pool, io);
 app.locals.automationEngine = automationEngine;
 
-// Due date reminder checker (runs every hour)
+// Due date checker (runs every hour)
 setInterval(async () => {
   try {
     const client = await pool.connect();
     try {
-      // Get all tasks with due dates in the next 24 hours
-      const { rows: tasks } = await client.query(
-        `SELECT t.*, ta.user_id as assignee_id
+      // Get all tasks with due dates in the next 24 hours (for due_date_close)
+      const { rows: tasksClose } = await client.query(
+        `SELECT t.*, ta.user_id as assignee_id, t.list_id
          FROM tasks t
          LEFT JOIN task_assignees ta ON t.id = ta.task_id
          WHERE t.due_date IS NOT NULL
@@ -468,27 +616,45 @@ setInterval(async () => {
          AND t.status != 'done'`
       );
 
-      // Group tasks by workspace
-      const tasksByWorkspace = {};
-      for (const task of tasks) {
-        if (!tasksByWorkspace[task.workspace_id]) {
-          tasksByWorkspace[task.workspace_id] = [];
+      // Get all overdue tasks (for due_date_passed)
+      const { rows: tasksOverdue } = await client.query(
+        `SELECT t.*, ta.user_id as assignee_id, t.list_id,
+                l.space_id
+         FROM tasks t
+         LEFT JOIN task_assignees ta ON t.id = ta.task_id
+         LEFT JOIN lists l ON t.list_id = l.id
+         WHERE t.due_date IS NOT NULL
+         AND t.due_date < NOW()
+         AND t.status != 'done'`
+      );
+
+      // Execute due_date_close automations
+      for (const task of tasksClose) {
+        if (automationEngine) {
+          await automationEngine.executeAutomations('due_date_close', {
+            taskId: task.id,
+            workspaceId: task.workspace_id,
+            listId: task.list_id,
+            projectId: task.project_id,
+            dueDate: task.due_date,
+            assigneeId: task.assignee_id
+          });
         }
-        tasksByWorkspace[task.workspace_id].push(task);
       }
 
-      // Execute due_date_close automations for each workspace
-      for (const [workspaceId, workspaceTasks] of Object.entries(tasksByWorkspace)) {
-        for (const task of workspaceTasks) {
-          if (automationEngine) {
-            await automationEngine.executeAutomations('due_date_close', {
-              taskId: task.id,
-              workspaceId: parseInt(workspaceId),
-              projectId: task.project_id,
-              dueDate: task.due_date,
-              assigneeId: task.assignee_id
-            });
-          }
+      // Execute due_date_passed automations
+      for (const task of tasksOverdue) {
+        if (automationEngine) {
+          await automationEngine.executeAutomations('due_date_passed', {
+            taskId: task.id,
+            workspaceId: task.workspace_id,
+            listId: task.list_id,
+            spaceId: task.space_id,
+            projectId: task.project_id,
+            dueDate: task.due_date,
+            assigneeId: task.assignee_id,
+            status: task.status
+          });
         }
       }
     } finally {
@@ -498,6 +664,17 @@ setInterval(async () => {
     console.error('Error checking due dates:', error);
   }
 }, 60 * 60 * 1000); // Run every hour
+
+// Recurring automations checker (runs every 5 minutes)
+setInterval(async () => {
+  try {
+    if (automationEngine) {
+      await automationEngine.checkRecurringAutomations();
+    }
+  } catch (error) {
+    console.error('Error checking recurring automations:', error);
+  }
+}, 5 * 60 * 1000); // Run every 5 minutes
 
 const PORT = process.env.PORT || 5000;
 server.listen(PORT, () => {

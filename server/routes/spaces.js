@@ -40,8 +40,9 @@ router.get('/workspace/:workspaceId', async (req, res) => {
       folders = foldersResult.rows;
     }
 
+    // Get lists from the lists table (ClickUp-style hierarchy)
     const listsResult = await pool.query(
-      'SELECT * FROM projects WHERE workspace_id = $1 ORDER BY created_at ASC',
+      'SELECT * FROM lists WHERE workspace_id = $1 ORDER BY position ASC, created_at ASC',
       [workspaceId]
     );
     const lists = listsResult.rows;

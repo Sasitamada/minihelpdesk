@@ -1,38 +1,75 @@
+@import './styles/theme.css';
+@import './styles/responsive.css';
+@import './styles/accessibility.css';
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
-
-body {
-  margin: 0;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
-    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
-    sans-serif;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-}
 
 code {
   font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
     monospace;
 }
 
-/* Dark mode styles */
-.dark {
-  background-color: #1a1a1a;
-  color: #e5e5e5;
-}
-
-/* React Quill styles */
+/* React Quill styles with theme support */
 .ql-editor {
   min-height: 150px;
+  color: var(--text);
+  background: var(--input-bg);
 }
 
-.dark .ql-editor {
-  color: #e5e5e5;
-  background: #2a2a2a;
+.ql-toolbar {
+  background: var(--input-bg);
+  border-color: var(--input-border);
 }
 
-.dark .ql-toolbar {
-  background: #2a2a2a;
-  border-color: #3a3a3a;
+.ql-container {
+  border-color: var(--input-border);
+}
+
+[data-theme="dark"] .ql-editor {
+  color: var(--text);
+  background: var(--input-bg);
+}
+
+[data-theme="dark"] .ql-toolbar {
+  background: var(--input-bg);
+  border-color: var(--input-border);
+}
+
+[data-theme="dark"] .ql-container {
+  border-color: var(--input-border);
+}
+
+/* Ensure all third-party components respect theme */
+.react-datepicker {
+  background: var(--surface) !important;
+  border-color: var(--border) !important;
+  color: var(--text) !important;
+}
+
+.react-datepicker__header {
+  background: var(--surface) !important;
+  border-color: var(--border) !important;
+}
+
+.react-datepicker__day {
+  color: var(--text) !important;
+}
+
+.react-datepicker__day:hover {
+  background: var(--surface-hover) !important;
+}
+
+.react-datepicker__day--selected {
+  background: var(--accent) !important;
+  color: var(--text-inverse) !important;
+}
+
+.react-datepicker__current-month {
+  color: var(--text) !important;
+}
+
+.react-datepicker__day-name {
+  color: var(--text-secondary) !important;
 }

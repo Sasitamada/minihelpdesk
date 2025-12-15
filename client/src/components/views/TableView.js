@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 
-const TableView = ({ tasks, onTaskClick, onTaskUpdate }) => {
+const TableView = ({ tasks, onTaskClick, onTaskUpdate, statusOptions = [] }) => {
   const [sortBy, setSortBy] = useState('title');
   const [sortOrder, setSortOrder] = useState('asc');
 
@@ -113,40 +113,84 @@ const TableView = ({ tasks, onTaskClick, onTaskUpdate }) => {
                 onMouseEnter={(e) => e.currentTarget.style.background = '#f7f8f9'}
                 onMouseLeave={(e) => e.currentTarget.style.background = 'white'}
               >
-                <td style={{ padding: '12px', fontWeight: '500' }}>{task.title}</td>
+                <td style={{ padding: '12px', fontWeight: '500' }}>
+                  <input
+                    type="text"
+                    defaultValue={task.title}
+                    onClick={(e) => e.stopPropagation()}
+                    onBlur={(e) => {
+                      if (e.target.value !== task.title) {
+                        onTaskUpdate(task.id || task._id, { title: e.target.value });
+                      }
+                    }}
+                    style={{
+                      width: '100%',
+                      border: '1px solid #e0e0e0',
+                      borderRadius: '4px',
+                      padding: '4px 6px'
+                    }}
+                  />
+                </td>
                 <td style={{ padding: '12px' }}>
-                  <span
+                  <select
+                    value={task.status || 'todo'}
+                    onClick={(e) => e.stopPropagation()}
+                    onChange={(e) => onTaskUpdate(task.id || task._id, { status: e.target.value })}
                     style={{
                       padding: '4px 12px',
                       borderRadius: '12px',
                       fontSize: '11px',
                       fontWeight: '600',
-                      background: getStatusColor(task.status),
-                      color: 'white'
+                      border: '1px solid #e0e0e0'
                     }}
                   >
-                    {task.status || 'todo'}
-                  </span>
+                    {(statusOptions.length
+                      ? statusOptions.map(option => ({ value: option.value, label: option.label }))
+                      : [
+                          { value: 'todo', label: 'To Do' },
+                          { value: 'inprogress', label: 'In Progress' },
+                          { value: 'done', label: 'Done' }
+                        ]
+                    ).map(option => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
                 </td>
                 <td style={{ padding: '12px' }}>
-                  <span
+                  <select
+                    value={task.priority || 'medium'}
+                    onClick={(e) => e.stopPropagation()}
+                    onChange={(e) => onTaskUpdate(task.id || task._id, { priority: e.target.value })}
                     style={{
                       padding: '4px 12px',
                       borderRadius: '12px',
                       fontSize: '11px',
                       fontWeight: '600',
-                      background: getPriorityColor(task.priority),
-                      color: 'white'
+                      border: '1px solid #e0e0e0'
                     }}
                   >
-                    {task.priority || 'medium'}
-                  </span>
+                    {['low', 'medium', 'high', 'urgent'].map(priority => (
+                      <option key={priority} value={priority}>
+                        {priority}
+                      </option>
+                    ))}
+                  </select>
                 </td>
                 <td style={{ padding: '12px', fontSize: '12px', color: '#6c757d' }}>
-                  {task.due_date ? new Date(task.due_date).toLocaleDateString() : '-'}
+                  <input
+                    type="date"
+                    value={task.due_date ? new Date(task.due_date).toISOString().substring(0, 10) : ''}
+                    onClick={(e) => e.stopPropagation()}
+                    onChange={(e) => onTaskUpdate(task.id || task._id, { due_date: e.target.value })}
+                    style={{ border: '1px solid #e0e0e0', borderRadius: '4px', padding: '4px 6px' }}
+                  />
                 </td>
                 <td style={{ padding: '12px', fontSize: '12px', color: '#6c757d' }}>
-                  {task.assigned_to ? 'Assigned' : 'Unassigned'}
+                  {task.assignees && task.assignees.length > 0
+                    ? task.assignees.map(a => a.full_name || a.username).join(', ')
+                    : 'Unassigned'}
                 </td>
                 <td style={{ padding: '12px' }}>
                   <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>

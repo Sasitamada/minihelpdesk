@@ -1,18 +1,26 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import DarkModeToggle from './DarkModeToggle';
+import NotificationsPanel from './NotificationsPanel';
+import AdvancedSearch from './AdvancedSearch';
 
 const Header = () => {
   const navigate = useNavigate();
   const location = useLocation();
-  const [showSearch, setShowSearch] = useState(false);
-  const [searchQuery, setSearchQuery] = useState('');
+  const [showAdvancedSearch, setShowAdvancedSearch] = useState(false);
+  const [currentUserId, setCurrentUserId] = useState(null);
+  const [workspaceId, setWorkspaceId] = useState(null);
 
-  const handleSearch = (e) => {
-    e.preventDefault();
-    console.log('Searching for:', searchQuery);
-    // TODO: Implement search functionality
-  };
+  useEffect(() => {
+    const user = JSON.parse(localStorage.getItem('user') || '{}');
+    setCurrentUserId(user.id);
+    
+    // Extract workspace ID from URL if available
+    const pathMatch = location.pathname.match(/\/workspaces\/(\d+)/);
+    if (pathMatch) {
+      setWorkspaceId(parseInt(pathMatch[1]));
+    }
+  }, [location]);
 
   const handleSettings = () => {
     navigate('/settings');
@@ -38,28 +46,31 @@ const Header = () => {
         </div>
       </div>
       <div className="header-actions" style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+        {currentUserId && (
+          <NotificationsPanel
+            userId={currentUserId}
+            onNotificationClick={(notification) => {
+              // Navigate to task if related
+              if (notification.related_type === 'comment' || notification.related_type === 'task') {
+                // You can implement navigation logic here
+                console.log('Notification clicked:', notification);
+              }
+            }}
+          />
+        )}
         <DarkModeToggle />
-        <div style={{ position: 'relative' }}>
-          {showSearch ? (
-            <form onSubmit={handleSearch} style={{ display: 'flex', gap: '8px' }}>
-              <input
-                type="text"
-                className="form-input"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search tasks..."
-                autoFocus
-                style={{ width: '300px' }}
-              />
-              <button type="submit" className="btn btn-primary">Search</button>
-              <button type="button" className="btn btn-secondary" onClick={() => setShowSearch(false)}>Cancel</button>
-            </form>
-          ) : (
-            <button className="btn btn-secondary" onClick={() => setShowSearch(true)}>
-              🔍 Search
-            </button>
-          )}
-        </div>
+        <button 
+          className="btn btn-secondary" 
+          onClick={() => setShowAdvancedSearch(true)}
+          title="Advanced Search"
+        >
+          🔍 Search
+        </button>
+        <AdvancedSearch
+          isOpen={showAdvancedSearch}
+          onClose={() => setShowAdvancedSearch(false)}
+          workspaceId={workspaceId}
+        />
         <button className="btn btn-secondary" onClick={handleSettings}>
           ⚙️ Settings
         </button>

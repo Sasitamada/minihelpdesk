@@ -30,9 +30,19 @@ const Dashboard = () => {
       setLoading(true);
       const user = JSON.parse(localStorage.getItem('user') || '{}');
       const response = await tasksAPI.getAll();
-      let allTasks = response.data || [];
+      // Handle new paginated response format: { data: [...], pagination: {...} }
+      // or old format: array directly
+      let allTasksData = [];
+      if (Array.isArray(response.data)) {
+        allTasksData = response.data;
+      } else if (response.data && Array.isArray(response.data.data)) {
+        allTasksData = response.data.data;
+      } else if (Array.isArray(response)) {
+        allTasksData = response;
+      }
       
       // Apply filters
+      let allTasks = allTasksData;
       if (filter === 'my') {
         allTasks = allTasks.filter(t => t.assigned_to === user.id);
       } else if (filter === 'due-today') {
@@ -52,21 +62,21 @@ const Dashboard = () => {
       
       setTasks(allTasks);
       
-      const myTasks = response.data.filter(t => t.assigned_to === user.id);
+      const myTasks = allTasksData.filter(t => t.assigned_to === user.id);
       const today = new Date().toISOString().split('T')[0];
-      const dueToday = response.data.filter(t => {
+      const dueToday = allTasksData.filter(t => {
         if (!t.due_date) return false;
         const dueDate = new Date(t.due_date).toISOString().split('T')[0];
         return dueDate === today && t.status !== 'done';
       });
-      const overdue = response.data.filter(t => {
+      const overdue = allTasksData.filter(t => {
         if (!t.due_date) return false;
         return new Date(t.due_date) < new Date() && t.status !== 'done';
       });
 
       // Load task history for activity feed
       const activityFeed = [];
-      for (const task of response.data.slice(0, 20)) {
+      for (const task of allTasksData.slice(0, 20)) {
         try {
           const historyRes = await tasksAPI.getHistory(task.id || task._id);
           if (historyRes.data && historyRes.data.length > 0) {
@@ -85,14 +95,14 @@ const Dashboard = () => {
       activityFeed.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
       
       setStats({
-        totalTasks: response.data.length,
-        todoTasks: response.data.filter(t => t.status === 'todo').length,
-        inProgressTasks: response.data.filter(t => t.status === 'inprogress').length,
-        doneTasks: response.data.filter(t => t.status === 'done').length,
+        totalTasks: allTasksData.length,
+        todoTasks: allTasksData.filter(t => t.status === 'todo').length,
+        inProgressTasks: allTasksData.filter(t => t.status === 'inprogress').length,
+        doneTasks: allTasksData.filter(t => t.status === 'done').length,
         myTasks: myTasks.length,
         dueToday: dueToday.length,
         overdue: overdue.length,
-        recentTasks: response.data.slice(0, 10),
+        recentTasks: allTasksData.slice(0, 10),
         activityFeed: activityFeed.slice(0, 10)
       });
     } catch (error) {

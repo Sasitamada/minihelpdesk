@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
 import { format, differenceInDays, startOfWeek, endOfWeek, eachDayOfInterval } from 'date-fns';
 
-const TimelineView = ({ tasks, onTaskClick }) => {
+const TimelineView = ({ tasks, onTaskClick, onDateChange }) => {
   const [timeframe, setTimeframe] = useState('week'); // week, month, quarter
+  const [draggedTaskId, setDraggedTaskId] = useState(null);
 
   const getDateRange = () => {
     const today = new Date();
@@ -44,8 +45,14 @@ const TimelineView = ({ tasks, onTaskClick }) => {
 
     return {
       left: (daysFromStart / totalDays) * 100,
-      width: Math.max(2, (totalDays * 0.05))
+      width: Math.max(4, (1 / totalDays) * 100 * 1.5)
     };
+  };
+
+  const handleDropOnDate = (date) => {
+    if (!draggedTaskId || !onDateChange) return;
+    onDateChange(draggedTaskId, date);
+    setDraggedTaskId(null);
   };
 
   const getPriorityColor = (priority) => {
@@ -191,18 +198,38 @@ const TimelineView = ({ tasks, onTaskClick }) => {
                   background: '#fafafa'
                 }}
               >
+                {/* Drop zones per day */}
+                {days.map((day, idx) => (
+                  <div
+                    key={idx}
+                    onDragOver={(e) => e.preventDefault()}
+                    onDrop={() => handleDropOnDate(day)}
+                    style={{
+                      position: 'absolute',
+                      left: `${(idx / totalDays) * 100}%`,
+                      top: 0,
+                      width: `${100 / totalDays}%`,
+                      height: '60px',
+                      borderLeft: idx % Math.max(1, Math.floor(totalDays / 10)) === 0 ? '1px dashed #e0e0e0' : 'none',
+                      zIndex: 1
+                    }}
+                  />
+                ))}
                 {position && (
                   <div
+                    draggable
+                    onDragStart={() => setDraggedTaskId(task.id || task._id)}
                     onClick={() => onTaskClick(task)}
                     style={{
                       position: 'absolute',
                       left: `${position.left}%`,
                       top: '15px',
                       width: `${position.width}%`,
+                      minWidth: '40px',
                       height: '30px',
                       background: getPriorityColor(task.priority),
                       borderRadius: '4px',
-                      cursor: 'pointer',
+                      cursor: 'grab',
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'center',
@@ -210,11 +237,12 @@ const TimelineView = ({ tasks, onTaskClick }) => {
                       fontSize: '10px',
                       fontWeight: '600',
                       boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
-                      border: `2px solid ${getStatusColor(task.status)}`
+                      border: `2px solid ${getStatusColor(task.status)}`,
+                      zIndex: 2
                     }}
                     title={`${task.title} - ${task.due_date ? format(new Date(task.due_date), 'MMM dd') : 'No due date'}`}
                   >
-                    {task.title.substring(0, 8)}
+                    {task.title.substring(0, 12)}
                   </div>
                 )}
               </div>

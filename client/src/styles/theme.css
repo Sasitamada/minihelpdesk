@@ -1,0 +1,180 @@
+/* ClickUp-style Theme Variables */
+:root {
+  /* Light Theme Colors */
+  --bg: #ffffff;
+  --bg-secondary: #f7f8f9;
+  --surface: #ffffff;
+  --surface-hover: #f4f5f7;
+  --border: #e4e6e8;
+  --border-light: #f0f0f0;
+  
+  --text: #1a1a1a;
+  --text-secondary: #6c757d;
+  --text-muted: #9ca3af;
+  --text-inverse: #ffffff;
+  
+  --accent: #6b5ce6;
+  --accent-hover: #5a4bd5;
+  --accent-light: #f0edff;
+  
+  --primary: #6b5ce6;
+  --primary-hover: #5a4bd5;
+  --primary-light: #f0edff;
+  
+  --success: #10b981;
+  --warning: #f59e0b;
+  --error: #ef4444;
+  --info: #3b82f6;
+  
+  --card-bg: #ffffff;
+  --card-border: #e4e6e8;
+  --card-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+  --card-shadow-hover: 0 4px 16px rgba(0, 0, 0, 0.1);
+  
+  --sidebar-bg: #ffffff;
+  --sidebar-border: #e4e6e8;
+  
+  --header-bg: #ffffff;
+  --header-border: #e4e6e8;
+  
+  --input-bg: #ffffff;
+  --input-border: #e4e6e8;
+  --input-focus: #6b5ce6;
+  
+  --modal-overlay: rgba(0, 0, 0, 0.5);
+  --modal-bg: #ffffff;
+  
+  /* Spacing */
+  --spacing-xs: 4px;
+  --spacing-sm: 8px;
+  --spacing-md: 16px;
+  --spacing-lg: 24px;
+  --spacing-xl: 32px;
+  --spacing-2xl: 40px;
+  
+  /* Typography */
+  --font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif;
+  --font-size-xs: 11px;
+  --font-size-sm: 12px;
+  --font-size-base: 14px;
+  --font-size-lg: 16px;
+  --font-size-xl: 18px;
+  --font-size-2xl: 22px;
+  --font-size-3xl: 28px;
+  
+  --font-weight-normal: 400;
+  --font-weight-medium: 500;
+  --font-weight-semibold: 600;
+  --font-weight-bold: 700;
+  
+  /* Border Radius */
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+  --radius-xl: 12px;
+  --radius-2xl: 16px;
+  --radius-full: 9999px;
+  
+  /* Shadows */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
+  --shadow-md: 0 2px 8px rgba(0, 0, 0, 0.06);
+  --shadow-lg: 0 4px 16px rgba(0, 0, 0, 0.1);
+  --shadow-xl: 0 8px 24px rgba(0, 0, 0, 0.12);
+  
+  /* Transitions */
+  --transition-fast: 150ms ease;
+  --transition-base: 200ms ease;
+  --transition-slow: 300ms ease;
+}
+
+[data-theme="dark"] {
+  /* Dark Theme Colors */
+  --bg: #0f0f0f;
+  --bg-secondary: #1a1a1a;
+  --surface: #1f1f1f;
+  --surface-hover: #2a2a2a;
+  --border: #2d2d2d;
+  --border-light: #252525;
+  
+  --text: #e5e5e5;
+  --text-secondary: #a0a0a0;
+  --text-muted: #6c757d;
+  --text-inverse: #1a1a1a;
+  
+  --accent: #7b68ee;
+  --accent-hover: #8b7af0;
+  --accent-light: #2a1f4a;
+  
+  --primary: #7b68ee;
+  --primary-hover: #8b7af0;
+  --primary-light: #2a1f4a;
+  
+  --success: #10b981;
+  --warning: #f59e0b;
+  --error: #ef4444;
+  --info: #3b82f6;
+  
+  --card-bg: #1f1f1f;
+  --card-border: #2d2d2d;
+  --card-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  --card-shadow-hover: 0 4px 16px rgba(0, 0, 0, 0.4);
+  
+  --sidebar-bg: #1a1a1a;
+  --sidebar-border: #2d2d2d;
+  
+  --header-bg: #1a1a1a;
+  --header-border: #2d2d2d;
+  
+  --input-bg: #1f1f1f;
+  --input-border: #2d2d2d;
+  --input-focus: #7b68ee;
+  
+  --modal-overlay: rgba(0, 0, 0, 0.7);
+  --modal-bg: #1f1f1f;
+}
+
+/* Base Styles */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: var(--font-family);
+  font-size: var(--font-size-base);
+  line-height: 1.5;
+  color: var(--text);
+  background-color: var(--bg-secondary);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  transition: background-color var(--transition-base), color var(--transition-base);
+}
+
+/* Scrollbar Styling */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--bg-secondary);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: var(--radius-sm);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text-muted);
+}
+
+[data-theme="dark"] ::-webkit-scrollbar-thumb {
+  background: var(--border);
+}
+
+[data-theme="dark"] ::-webkit-scrollbar-thumb:hover {
+  background: var(--text-secondary);
+}
+
